@@ -15,9 +15,11 @@ import 'app/app.dart';
 import 'features/auth/providers/auth_provider.dart';
 import 'features/employees/providers/employee_provider.dart';
 import 'features/attendance/providers/attendance_provider.dart';
+import 'features/attendance/providers/employee_attendance_provider.dart';
 import 'features/leave/providers/leave_provider.dart';
 import 'features/payroll/providers/payroll_provider.dart';
 import 'features/profile/providers/profile_provider.dart';
+import 'features/attendance/providers/office_settings_provider.dart';
 
 void main() async {
   // ── Required before any platform calls ──────────────────
@@ -61,9 +63,11 @@ class HRMISApp extends StatelessWidget {
             ChangeNotifierProvider(create: (_) => AuthProvider()),
             ChangeNotifierProvider(create: (_) => EmployeeProvider()),
             ChangeNotifierProvider(create: (_) => AttendanceProvider()),
+            ChangeNotifierProvider(create: (_) => EmployeeAttendanceProvider()),
             ChangeNotifierProvider(create: (_) => LeaveProvider()),
             ChangeNotifierProvider(create: (_) => PayrollProvider()),
             ChangeNotifierProvider(create: (_) => ProfileProvider()),
+            ChangeNotifierProvider(create: (_) => OfficeSettingsProvider()),
           ],
           child: const AppRoot(),
         );

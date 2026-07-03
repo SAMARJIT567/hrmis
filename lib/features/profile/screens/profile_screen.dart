@@ -20,6 +20,7 @@ import '../../../core/utils/helpers.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'edit_profile_screen.dart';
 import '../providers/profile_provider.dart';
+import '../../admin/screens/office_settings_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -276,7 +277,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   SizedBox(height: 8.h),
                   _buildSettingsCard([
                     _SettingItem(Icons.people_alt, 'Manage Users', AppColors.primary, () {}),
-                    _SettingItem(Icons.business, 'Company Settings', AppColors.primary, () {}),
+                    _SettingItem(
+                      Icons.business,
+                      'Company Settings',
+                      AppColors.primary,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const OfficeSettingsScreen()),
+                      ),
+                    ),
                     _SettingItem(Icons.backup, 'Backup & Restore', AppColors.primary, () {}),
                     _SettingItem(Icons.info_outline, 'System Logs', AppColors.textTertiary, () {}),
                   ]),

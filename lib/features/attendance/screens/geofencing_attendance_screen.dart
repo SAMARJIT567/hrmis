@@ -19,6 +19,7 @@ import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/loading_widget.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/attendance_provider.dart';
+import '../providers/office_settings_provider.dart';
 import '../models/office_settings_model.dart';
 
 class GeofencingAttendanceScreen extends StatefulWidget {
@@ -55,13 +56,16 @@ class _GeofencingAttendanceScreenState extends State<GeofencingAttendanceScreen>
       _isLoading = true;
     });
     
-    // Simulate loading office settings
-    await Future.delayed(const Duration(milliseconds: 500));
+    // Load from provider
+    final provider = context.read<OfficeSettingsProvider>();
+    await provider.loadSettings();
     
-    setState(() {
-      _officeSettings = OfficeSettings.defaultSettings;
-      _isLoading = false;
-    });
+    if (mounted) {
+      setState(() {
+        _officeSettings = provider.settings;
+        _isLoading = false;
+      });
+    }
   }
 
   Future<void> _checkLocationAndAttendance() async {
@@ -159,6 +163,7 @@ class _GeofencingAttendanceScreenState extends State<GeofencingAttendanceScreen>
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    _officeSettings = context.watch<OfficeSettingsProvider>().settings;
 
     return Scaffold(
       backgroundColor: AppColors.background,

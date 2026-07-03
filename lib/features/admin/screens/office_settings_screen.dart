@@ -13,6 +13,8 @@ import '../../../core/services/location_service.dart';
 import '../../../core/services/time_service.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text_field.dart';
+import '../../attendance/providers/office_settings_provider.dart';
+import 'package:provider/provider.dart';
 
 class OfficeSettingsScreen extends StatefulWidget {
   const OfficeSettingsScreen({super.key});
@@ -40,6 +42,10 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
   bool _isCheckOutRequired = true;
   bool _isLocationTrackingEnabled = true;
   bool _isBiometricEnabled = false;
+  bool _allowRemoteCheckIn = false;
+  bool _autoApproveLeave = false;
+  bool _sendEmailNotifications = true;
+  double _allowedRadius = 100.0;
   String _selectedTimeZone = 'Asia/Kolkata';
 
   final List<String> _timeZones = [
@@ -50,6 +56,33 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
     'America/New_York',
     'America/Los_Angeles',
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final settings = context.read<OfficeSettingsProvider>().settings;
+      setState(() {
+        _allowedRadius = settings.allowedRadiusMeters;
+        _officeNameController.text = settings.officeName;
+        _officeAddressController.text = settings.officeAddress;
+        _officeLatitudeController.text = settings.latitude.toString();
+        _officeLongitudeController.text = settings.longitude.toString();
+        _checkInTimeController.text = settings.checkInTime;
+        _checkOutTimeController.text = settings.checkOutTime;
+        _workingHoursController.text = settings.workingHoursPerDay.toString();
+        _breakDurationController.text = settings.breakDurationMinutes.toString();
+        _isCheckInRequired = settings.isCheckInRequired;
+        _isCheckOutRequired = settings.isCheckOutRequired;
+        _isLocationTrackingEnabled = settings.isLocationTrackingEnabled;
+        _isBiometricEnabled = settings.isBiometricEnabled;
+        _allowRemoteCheckIn = settings.allowRemoteCheckIn;
+        _autoApproveLeave = settings.autoApproveLeave;
+        _sendEmailNotifications = settings.sendEmailNotifications;
+        _selectedTimeZone = settings.timeZone;
+      });
+    });
+  }
 
   @override
   void dispose() {
@@ -71,7 +104,31 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
       _isLoading = true;
     });
 
-    await Future.delayed(const Duration(seconds: 1));
+    final provider = context.read<OfficeSettingsProvider>();
+    final currentSettings = provider.settings;
+
+    final updatedSettings = currentSettings.copyWith(
+      officeName: _officeNameController.text,
+      officeAddress: _officeAddressController.text,
+      latitude: double.tryParse(_officeLatitudeController.text) ?? currentSettings.latitude,
+      longitude: double.tryParse(_officeLongitudeController.text) ?? currentSettings.longitude,
+      checkInTime: _checkInTimeController.text,
+      checkOutTime: _checkOutTimeController.text,
+      workingHoursPerDay: int.tryParse(_workingHoursController.text) ?? currentSettings.workingHoursPerDay,
+      breakDurationMinutes: int.tryParse(_breakDurationController.text) ?? currentSettings.breakDurationMinutes,
+      isCheckInRequired: _isCheckInRequired,
+      isCheckOutRequired: _isCheckOutRequired,
+      isLocationTrackingEnabled: _isLocationTrackingEnabled,
+      isBiometricEnabled: _isBiometricEnabled,
+      allowRemoteCheckIn: _allowRemoteCheckIn,
+      autoApproveLeave: _autoApproveLeave,
+      sendEmailNotifications: _sendEmailNotifications,
+      timeZone: _selectedTimeZone,
+      allowedRadiusMeters: _allowedRadius,
+    );
+
+    provider.updateSettings(updatedSettings);
+    await provider.saveSettings();
 
     setState(() {
       _isLoading = false;
@@ -312,6 +369,62 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
             prefixIcon: Icons.my_location_rounded,
             type: ButtonType.outline,
           ),
+          SizedBox(height: 20.h),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    'Location Radius',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w500,
+                      color: AppColors.textPrimary,
+                    ),
+                  ),
+                  Text(
+                    '${_allowedRadius.toStringAsFixed(0)} meters',
+                    style: GoogleFonts.poppins(
+                      fontSize: 13.sp,
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 8.h),
+              SliderTheme(
+                data: SliderTheme.of(context).copyWith(
+                  trackHeight: 4,
+                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                ),
+                child: Slider(
+                  value: _allowedRadius,
+                  min: 50,
+                  max: 1000,
+                  divisions: 19, // (1000-50)/50 = 19 divisions of 50m each
+                  label: '${_allowedRadius.toStringAsFixed(0)}m',
+                  activeColor: AppColors.primary,
+                  inactiveColor: AppColors.primary.withOpacity(0.2),
+                  onChanged: (value) {
+                    setState(() {
+                      _allowedRadius = value;
+                    });
+                  },
+                ),
+              ),
+              Text(
+                'Allowed check-in radius from the office location',
+                style: GoogleFonts.poppins(
+                  fontSize: 11.sp,
+                  color: AppColors.textTertiary,
+                ),
+              ),
+            ],
+          ),
           SizedBox(height: 12.h),
           SwitchListTile(
             title: Text(
@@ -479,8 +592,8 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
               'Employees can check-in from outside office',
               style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
             ),
-            value: false,
-            onChanged: (val) {},
+            value: _allowRemoteCheckIn,
+            onChanged: (val) => setState(() => _allowRemoteCheckIn = val),
             activeColor: AppColors.primary,
           ),
           SwitchListTile(
@@ -492,8 +605,8 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
               'Notify HR on attendance changes',
               style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
             ),
-            value: true,
-            onChanged: (val) {},
+            value: _sendEmailNotifications,
+            onChanged: (val) => setState(() => _sendEmailNotifications = val),
             activeColor: AppColors.primary,
           ),
           SwitchListTile(
@@ -505,8 +618,8 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
               'Auto-approve leave requests (for testing)',
               style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
             ),
-            value: false,
-            onChanged: (val) {},
+            value: _autoApproveLeave,
+            onChanged: (val) => setState(() => _autoApproveLeave = val),
             activeColor: AppColors.primary,
           ),
         ],

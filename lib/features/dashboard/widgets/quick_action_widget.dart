@@ -7,6 +7,11 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
+import '../../admin/screens/office_settings_screen.dart';
+import '../../employees/screens/add_employee_screen.dart';
+import '../../attendance/screens/attendance_screen.dart';
+import '../../leave/screens/leave_screen.dart';
+import '../../payroll/screens/payroll_screen.dart';
 
 class QuickActionButton extends StatelessWidget {
   final String label;
@@ -98,14 +103,51 @@ class QuickActionsSection extends StatelessWidget {
         physics: const NeverScrollableScrollPhysics(),
         mainAxisSpacing: 16.h,
         crossAxisSpacing: 12.w,
-        childAspectRatio: 0.9,
+        childAspectRatio: 0.8,
         children: _actions.map((a) {
           return QuickActionButton(
             label: a.label,
             icon: a.icon,
             iconColor: a.color,
             bgColor: a.bgColor,
-            onTap: () {},
+            onTap: () {
+              if (a.label == 'Settings') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const OfficeSettingsScreen(),
+                  ),
+                );
+              } else if (a.label == 'Add Employee') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AddEmployeeScreen(),
+                  ),
+                );
+              } else if (a.label == 'Attendance') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const AttendanceScreen(),
+                  ),
+                );
+              } else if (a.label == 'Apply Leave') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const LeaveScreen(),
+                  ),
+                );
+              } else if (a.label == 'Run Payroll') {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => const PayrollScreen(),
+                  ),
+                );
+              }
+            },
           );
         }).toList(),
       ),

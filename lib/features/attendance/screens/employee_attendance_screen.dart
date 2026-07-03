@@ -1,7 +1,7 @@
 // ============================================================
 // 📁 lib/features/attendance/screens/employee_attendance_screen.dart
 // ============================================================
-// Dashboard Screen - Bottom navigation parent se milega
+// Dashboard Screen for Employees
 // ============================================================
 
 import 'package:flutter/material.dart';
@@ -13,152 +13,10 @@ import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
 import '../../../shared/widgets/loading_widget.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../providers/employee_attendance_provider.dart';
 import 'attendance_calendar_screen.dart';
+import 'check_in_screen.dart';
 import '../../leave/screens/employee_leave_screen.dart';
-
-class EmployeeAttendanceRecord {
-  final String id;
-  final String date;
-  final String? checkIn;
-  final String? checkOut;
-  final String status;
-  final String? workHours;
-  final String? lateDuration;
-
-  const EmployeeAttendanceRecord({
-    required this.id,
-    required this.date,
-    this.checkIn,
-    this.checkOut,
-    required this.status,
-    this.workHours,
-    this.lateDuration,
-  });
-}
-
-class EmployeeAttendanceProvider extends ChangeNotifier {
-  List<EmployeeAttendanceRecord> _records = [];
-  bool _isLoading = false;
-  bool _isCheckedIn = false;
-  String? _currentCheckInTime;
-  String? _currentLateDuration;
-
-  List<EmployeeAttendanceRecord> get records => _records;
-  bool get isLoading => _isLoading;
-  bool get isCheckedIn => _isCheckedIn;
-  String? get currentCheckInTime => _currentCheckInTime;
-  String? get currentLateDuration => _currentLateDuration;
-
-  int get presentCount => _records.where((r) => r.status == 'Present').length;
-  int get absentCount => _records.where((r) => r.status == 'Absent').length;
-  int get lateCount => _records.where((r) => r.status == 'Late').length;
-
-  EmployeeAttendanceProvider() {
-    loadMyAttendance();
-    _checkTodayAttendance();
-  }
-
-  Future<void> loadMyAttendance() async {
-    _isLoading = true;
-    notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    _records = [
-      const EmployeeAttendanceRecord(id: '1', date: '20 May 2025', checkIn: '09:05 AM', checkOut: '06:10 PM', status: 'Present', workHours: '9h 5m', lateDuration: null),
-      const EmployeeAttendanceRecord(id: '2', date: '19 May 2025', checkIn: '09:00 AM', checkOut: '06:00 PM', status: 'Present', workHours: '9h 0m', lateDuration: null),
-      const EmployeeAttendanceRecord(id: '3', date: '18 May 2025', checkIn: '09:45 AM', checkOut: '06:15 PM', status: 'Late', workHours: '8h 30m', lateDuration: '15 minutes'),
-      const EmployeeAttendanceRecord(id: '4', date: '17 May 2025', checkIn: null, checkOut: null, status: 'Absent', workHours: null, lateDuration: null),
-      const EmployeeAttendanceRecord(id: '5', date: '16 May 2025', checkIn: '10:30 AM', checkOut: '06:05 PM', status: 'Late', workHours: '7h 35m', lateDuration: '30 minutes'),
-    ];
-
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  Future<void> _checkTodayAttendance() async {
-    final today = DateFormat('dd MMM yyyy').format(DateTime.now());
-    final todayRecord = _records.firstWhere(
-      (r) => r.date == today,
-      orElse: () => const EmployeeAttendanceRecord(id: '', date: '', status: 'Absent'),
-    );
-    _isCheckedIn = todayRecord.checkIn != null;
-    _currentCheckInTime = todayRecord.checkIn;
-    _currentLateDuration = todayRecord.lateDuration;
-    notifyListeners();
-  }
-
-  String _calculateLateDuration(DateTime checkInTime) {
-    final expectedTime = DateTime(checkInTime.year, checkInTime.month, checkInTime.day, 10, 0);
-    if (checkInTime.isAfter(expectedTime)) {
-      final difference = checkInTime.difference(expectedTime);
-      final minutes = difference.inMinutes;
-      if (minutes < 60) return '$minutes minutes';
-      final hours = minutes ~/ 60;
-      final mins = minutes % 60;
-      return '$hours hour${hours > 1 ? 's' : ''} ${mins > 0 ? '$mins minutes' : ''}';
-    }
-    return '';
-  }
-
-  Future<bool> checkIn() async {
-    if (_isCheckedIn) return false;
-    await Future.delayed(const Duration(milliseconds: 500));
-    final now = DateTime.now();
-    final checkInTime = DateFormat('hh:mm a').format(now);
-    final today = DateFormat('dd MMM yyyy').format(now);
-    final isLate = now.hour >= 10;
-    final lateDuration = isLate ? _calculateLateDuration(now) : '';
-
-    _records.insert(0, EmployeeAttendanceRecord(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
-      date: today,
-      checkIn: checkInTime,
-      checkOut: null,
-      status: isLate ? 'Late' : 'Present',
-      workHours: null,
-      lateDuration: isLate ? lateDuration : null,
-    ));
-
-    _isCheckedIn = true;
-    _currentCheckInTime = checkInTime;
-    _currentLateDuration = isLate ? lateDuration : null;
-    notifyListeners();
-    return true;
-  }
-
-  Future<bool> checkOut() async {
-    if (!_isCheckedIn) return false;
-    await Future.delayed(const Duration(milliseconds: 500));
-    final now = DateTime.now();
-    final checkOutTime = DateFormat('hh:mm a').format(now);
-    final today = DateFormat('dd MMM yyyy').format(now);
-
-    final index = _records.indexWhere((r) => r.date == today);
-    if (index != -1) {
-      final record = _records[index];
-      final checkIn = DateFormat('hh:mm a').parse(record.checkIn!);
-      final workDuration = now.difference(checkIn);
-      final hours = workDuration.inHours;
-      final minutes = workDuration.inMinutes % 60;
-
-      _records[index] = EmployeeAttendanceRecord(
-        id: record.id,
-        date: record.date,
-        checkIn: record.checkIn,
-        checkOut: checkOutTime,
-        status: record.status,
-        workHours: '$hours h ${minutes}m',
-        lateDuration: record.lateDuration,
-      );
-    }
-
-    _isCheckedIn = false;
-    _currentCheckInTime = null;
-    _currentLateDuration = null;
-    notifyListeners();
-    return true;
-  }
-}
 
 class EmployeeAttendanceScreen extends StatelessWidget {
   const EmployeeAttendanceScreen({super.key});
@@ -168,28 +26,25 @@ class EmployeeAttendanceScreen extends StatelessWidget {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
 
-    return ChangeNotifierProvider(
-      create: (_) => EmployeeAttendanceProvider(),
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        body: CustomScrollView(
-          physics: const BouncingScrollPhysics(),
-          slivers: [
-            _buildStickyHeader(user, context),
-            SliverToBoxAdapter(
-              child: Column(
-                children: [
-                  _buildTodayCard(context),
-                  _buildQuickActions(context),
-                  _buildStatsRow(),
-                  _buildHistoryTitle(),
-                  _buildAttendanceHistory(),
-                  SizedBox(height: 20.h),
-                ],
-              ),
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      body: CustomScrollView(
+        physics: const BouncingScrollPhysics(),
+        slivers: [
+          _buildStickyHeader(user, context),
+          SliverToBoxAdapter(
+            child: Column(
+              children: [
+                _buildTodayCard(context),
+                _buildQuickActions(context),
+                _buildStatsRow(),
+                _buildHistoryTitle(),
+                _buildAttendanceHistory(),
+                SizedBox(height: 20.h),
+              ],
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -262,15 +117,27 @@ class EmployeeAttendanceScreen extends StatelessWidget {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   if (!provider.isCheckedIn)
-                    _actionButton(icon: Icons.login_rounded, label: 'Check In', color: AppColors.success, onTap: () async {
-                      final success = await provider.checkIn();
-                      if (success && context.mounted) AppHelpers.showSuccess(context, 'Checked In Successfully!');
-                    })
+                    _actionButton(
+                      icon: Icons.login_rounded, 
+                      label: 'Check In', 
+                      color: AppColors.success, 
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(builder: (_) => const CheckInScreen()),
+                        );
+                      }
+                    )
                   else
-                    _actionButton(icon: Icons.logout_rounded, label: 'Check Out', color: AppColors.error, onTap: () async {
-                      final success = await provider.checkOut();
-                      if (success && context.mounted) AppHelpers.showSuccess(context, 'Checked Out Successfully!');
-                    }),
+                    _actionButton(
+                      icon: Icons.logout_rounded, 
+                      label: 'Check Out', 
+                      color: AppColors.error, 
+                      onTap: () async {
+                        final success = await provider.checkOut();
+                        if (success && context.mounted) AppHelpers.showSuccess(context, 'Checked Out Successfully!');
+                      }
+                    ),
                 ],
               ),
               if (provider.isCheckedIn && provider.currentCheckInTime != null) ...[
