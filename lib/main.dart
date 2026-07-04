@@ -1,15 +1,13 @@
 // ============================================================
 // main.dart — App Entry Point
 // ============================================================
-// Initializes Flutter engine, sets system UI, wraps app in
-// ScreenUtil for responsiveness, and registers all Providers.
-// ============================================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:google_maps_flutter_android/google_maps_flutter_android.dart';
+import 'package:google_maps_flutter_platform_interface/google_maps_flutter_platform_interface.dart';
 
 import 'app/app.dart';
 import 'features/auth/providers/auth_provider.dart';
@@ -22,32 +20,34 @@ import 'features/profile/providers/profile_provider.dart';
 import 'features/attendance/providers/office_settings_provider.dart';
 
 void main() async {
-  // ── Required before any platform calls ──────────────────
   WidgetsFlutterBinding.ensureInitialized();
 
-  // ── SharedPreferences init (for auth persistence) ────────
+  // ── Initialize Maps Renderer (Once and safely) ──
+  final GoogleMapsFlutterPlatform mapsImplementation = GoogleMapsFlutterPlatform.instance;
+  if (mapsImplementation is GoogleMapsFlutterAndroid) {
+    // 1. Switch to the 'latest' renderer for better performance and stability
+    // 2. Avoid forcing 'useAndroidViewSurface' which causes qdgralloc errors on some devices
+    try {
+      await mapsImplementation.initializeWithRenderer(AndroidMapRenderer.latest);
+    } catch (e) {
+      debugPrint('Maps initialization error: $e');
+    }
+  }
+
   await SharedPreferences.getInstance();
 
-  // ── System UI style ──────────────────────────────────────
   SystemChrome.setSystemUIOverlayStyle(
     const SystemUiOverlayStyle(
       statusBarColor: Colors.transparent,
       statusBarIconBrightness: Brightness.dark,
-      statusBarBrightness: Brightness.light,
-      systemNavigationBarColor: Colors.white,
-      systemNavigationBarIconBrightness: Brightness.dark,
     ),
   );
 
-  // ── Lock orientation to portrait ─────────────────────────
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  await SystemChrome.setPreferredOrientations([DeviceOrientation.portraitUp]);
 
   runApp(const HRMISApp());
 }
 
-/// Root widget — sets up ScreenUtil + all global providers
 class HRMISApp extends StatelessWidget {
   const HRMISApp({super.key});
 

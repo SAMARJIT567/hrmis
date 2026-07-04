@@ -27,24 +27,20 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
   final _formKey = GlobalKey<FormState>();
 
   // ─── Controllers ────────────────────────────────────────────
-  final _officeNameController = TextEditingController(text: 'TechCorp Pvt. Ltd.');
-  final _officeAddressController = TextEditingController(text: 'New Delhi, India');
-  final _officeLatitudeController = TextEditingController(text: '28.6139');
-  final _officeLongitudeController = TextEditingController(text: '77.2090');
-  final _checkInTimeController = TextEditingController(text: '09:00 AM');
-  final _checkOutTimeController = TextEditingController(text: '06:00 PM');
-  final _workingHoursController = TextEditingController(text: '8');
-  final _breakDurationController = TextEditingController(text: '30');
+  final _officeNameController = TextEditingController();
+  final _officeAddressController = TextEditingController();
+  final _officeLatitudeController = TextEditingController();
+  final _officeLongitudeController = TextEditingController();
+  final _checkInTimeController = TextEditingController();
+  final _checkOutTimeController = TextEditingController();
+  final _workingHoursController = TextEditingController();
+  final _breakDurationController = TextEditingController();
 
   // ─── State ──────────────────────────────────────────────────
   bool _isLoading = false;
   bool _isCheckInRequired = true;
   bool _isCheckOutRequired = true;
   bool _isLocationTrackingEnabled = true;
-  bool _isBiometricEnabled = false;
-  bool _allowRemoteCheckIn = false;
-  bool _autoApproveLeave = false;
-  bool _sendEmailNotifications = true;
   double _allowedRadius = 100.0;
   String _selectedTimeZone = 'Asia/Kolkata';
 
@@ -75,10 +71,6 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
         _isCheckInRequired = settings.isCheckInRequired;
         _isCheckOutRequired = settings.isCheckOutRequired;
         _isLocationTrackingEnabled = settings.isLocationTrackingEnabled;
-        _isBiometricEnabled = settings.isBiometricEnabled;
-        _allowRemoteCheckIn = settings.allowRemoteCheckIn;
-        _autoApproveLeave = settings.autoApproveLeave;
-        _sendEmailNotifications = settings.sendEmailNotifications;
         _selectedTimeZone = settings.timeZone;
       });
     });
@@ -119,10 +111,6 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
       isCheckInRequired: _isCheckInRequired,
       isCheckOutRequired: _isCheckOutRequired,
       isLocationTrackingEnabled: _isLocationTrackingEnabled,
-      isBiometricEnabled: _isBiometricEnabled,
-      allowRemoteCheckIn: _allowRemoteCheckIn,
-      autoApproveLeave: _autoApproveLeave,
-      sendEmailNotifications: _sendEmailNotifications,
       timeZone: _selectedTimeZone,
       allowedRadiusMeters: _allowedRadius,
     );
@@ -222,13 +210,6 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
                     SizedBox(height: 12.h),
                     _buildAttendanceCard(),
 
-                    SizedBox(height: 20.h),
-
-                    // ─── Advanced Settings ────────────────────
-                    _sectionTitle('Advanced Settings'),
-                    SizedBox(height: 12.h),
-                    _buildAdvancedCard(),
-
                     SizedBox(height: 30.h),
 
                     // ─── Save Button ──────────────────────────
@@ -258,7 +239,6 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
 
   Widget _buildOfficeDetailsCard() {
     return Container(
-      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
@@ -271,58 +251,63 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          CustomTextField(
-            label: 'Office Name',
-            hint: 'Enter office name',
-            controller: _officeNameController,
-            prefixIcon: Icons.business_outlined,
-            validator: (val) =>
-                val == null || val.isEmpty ? 'Please enter office name' : null,
-          ),
-          SizedBox(height: 12.h),
-          CustomTextField(
-            label: 'Office Address',
-            hint: 'Enter office address',
-            controller: _officeAddressController,
-            prefixIcon: Icons.location_on_outlined,
-            validator: (val) =>
-                val == null || val.isEmpty ? 'Please enter office address' : null,
-          ),
-          SizedBox(height: 12.h),
-          Row(
+      child: Material(
+        color: Colors.transparent,
+        child: Padding(
+          padding: EdgeInsets.all(16.r),
+          child: Column(
             children: [
-              Expanded(
-                child: CustomTextField(
-                  label: 'Time Zone',
-                  hint: 'Select time zone',
-                  controller: TextEditingController(text: _selectedTimeZone),
-                  prefixIcon: Icons.access_time,
-                  readOnly: true,
-                  onTap: _showTimeZonePicker,
-                ),
+              CustomTextField(
+                label: 'Office Name',
+                hint: 'Enter office name',
+                controller: _officeNameController,
+                prefixIcon: Icons.business_outlined,
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Please enter office name' : null,
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: CustomTextField(
-                  label: 'Working Days',
-                  hint: 'Mon-Sat',
-                  controller: TextEditingController(text: 'Mon-Sat'),
-                  prefixIcon: Icons.calendar_today,
-                  readOnly: true,
-                ),
+              SizedBox(height: 12.h),
+              CustomTextField(
+                label: 'Office Address',
+                hint: 'Enter office address',
+                controller: _officeAddressController,
+                prefixIcon: Icons.location_on_outlined,
+                validator: (val) =>
+                    val == null || val.isEmpty ? 'Please enter office address' : null,
+              ),
+              SizedBox(height: 12.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Time Zone',
+                      hint: 'Select time zone',
+                      controller: TextEditingController(text: _selectedTimeZone),
+                      prefixIcon: Icons.access_time,
+                      readOnly: true,
+                      onTap: _showTimeZonePicker,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Working Days',
+                      hint: 'Mon-Sat',
+                      controller: TextEditingController(text: 'Mon-Sat'),
+                      prefixIcon: Icons.calendar_today,
+                      readOnly: true,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildLocationCard() {
     return Container(
-      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
@@ -335,131 +320,123 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: CustomTextField(
-                  label: 'Office Latitude',
-                  hint: 'Enter latitude',
-                  controller: _officeLatitudeController,
-                  prefixIcon: Icons.pin_drop_outlined,
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter latitude' : null,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: CustomTextField(
-                  label: 'Office Longitude',
-                  hint: 'Enter longitude',
-                  controller: _officeLongitudeController,
-                  prefixIcon: Icons.pin_drop_outlined,
-                  validator: (val) =>
-                      val == null || val.isEmpty ? 'Enter longitude' : null,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          CustomButton(
-            label: 'Get Current Location',
-            onPressed: _getCurrentLocation,
-            prefixIcon: Icons.my_location_rounded,
-            type: ButtonType.outline,
-          ),
-          SizedBox(height: 20.h),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+      child: Material(
+        color: Colors.transparent,
+        child: Padding(
+          padding: EdgeInsets.all(16.r),
+          child: Column(
             children: [
               Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    'Location Radius',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w500,
-                      color: AppColors.textPrimary,
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Office Latitude',
+                      hint: 'Enter latitude',
+                      controller: _officeLatitudeController,
+                      prefixIcon: Icons.pin_drop_outlined,
+                      validator: (val) =>
+                          val == null || val.isEmpty ? 'Enter latitude' : null,
                     ),
                   ),
-                  Text(
-                    '${_allowedRadius.toStringAsFixed(0)} meters',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.sp,
-                      fontWeight: FontWeight.w600,
-                      color: AppColors.primary,
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Office Longitude',
+                      hint: 'Enter longitude',
+                      controller: _officeLongitudeController,
+                      prefixIcon: Icons.pin_drop_outlined,
+                      validator: (val) =>
+                          val == null || val.isEmpty ? 'Enter longitude' : null,
                     ),
                   ),
                 ],
               ),
-              SizedBox(height: 8.h),
-              SliderTheme(
-                data: SliderTheme.of(context).copyWith(
-                  trackHeight: 4,
-                  thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
-                  overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
-                ),
-                child: Slider(
-                  value: _allowedRadius,
-                  min: 50,
-                  max: 1000,
-                  divisions: 19, // (1000-50)/50 = 19 divisions of 50m each
-                  label: '${_allowedRadius.toStringAsFixed(0)}m',
-                  activeColor: AppColors.primary,
-                  inactiveColor: AppColors.primary.withOpacity(0.2),
-                  onChanged: (value) {
-                    setState(() {
-                      _allowedRadius = value;
-                    });
-                  },
-                ),
+              SizedBox(height: 12.h),
+              CustomButton(
+                label: 'Get Current Location',
+                onPressed: _getCurrentLocation,
+                prefixIcon: Icons.my_location_rounded,
+                type: ButtonType.outline,
               ),
-              Text(
-                'Allowed check-in radius from the office location',
-                style: GoogleFonts.poppins(
-                  fontSize: 11.sp,
-                  color: AppColors.textTertiary,
+              SizedBox(height: 20.h),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Location Radius',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w500,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                      Text(
+                        '${_allowedRadius.toStringAsFixed(0)} meters',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8.h),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      trackHeight: 4,
+                      thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 8),
+                      overlayShape: const RoundSliderOverlayShape(overlayRadius: 16),
+                    ),
+                    child: Slider(
+                      value: _allowedRadius,
+                      min: 50,
+                      max: 1000,
+                      divisions: 19, // (1000-50)/50 = 19 divisions of 50m each
+                      label: '${_allowedRadius.toStringAsFixed(0)}m',
+                      activeColor: AppColors.primary,
+                      inactiveColor: AppColors.primary.withOpacity(0.2),
+                      onChanged: (value) {
+                        setState(() {
+                          _allowedRadius = value;
+                        });
+                      },
+                    ),
+                  ),
+                  Text(
+                    'Allowed check-in radius from the office location',
+                    style: GoogleFonts.poppins(
+                      fontSize: 11.sp,
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 12.h),
+              SwitchListTile(
+                title: Text(
+                  'Enable Location Tracking',
+                  style: GoogleFonts.poppins(fontSize: 13.sp),
                 ),
+                subtitle: Text(
+                  'Track employee location during check-in',
+                  style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
+                ),
+                value: _isLocationTrackingEnabled,
+                onChanged: (val) => setState(() => _isLocationTrackingEnabled = val),
+                activeColor: AppColors.primary,
               ),
             ],
           ),
-          SizedBox(height: 12.h),
-          SwitchListTile(
-            title: Text(
-              'Enable Location Tracking',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Track employee location during check-in',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: _isLocationTrackingEnabled,
-            onChanged: (val) => setState(() => _isLocationTrackingEnabled = val),
-            activeColor: AppColors.primary,
-          ),
-          SwitchListTile(
-            title: Text(
-              'Enable Biometric Authentication',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Use fingerprint/face for attendance',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: _isBiometricEnabled,
-            onChanged: (val) => setState(() => _isBiometricEnabled = val),
-            activeColor: AppColors.primary,
-          ),
-        ],
+        ),
       ),
     );
   }
 
   Widget _buildAttendanceCard() {
     return Container(
-      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16.r),
@@ -472,157 +449,89 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          Row(
+      child: Material(
+        color: Colors.transparent,
+        child: Padding(
+          padding: EdgeInsets.all(16.r),
+          child: Column(
             children: [
-              Expanded(
-                child: CustomTextField(
-                  label: 'Check-in Time',
-                  hint: '09:00 AM',
-                  controller: _checkInTimeController,
-                  prefixIcon: Icons.login_rounded,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: CustomTextField(
-                  label: 'Check-out Time',
-                  hint: '06:00 PM',
-                  controller: _checkOutTimeController,
-                  prefixIcon: Icons.logout_rounded,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: CustomTextField(
-                  label: 'Working Hours (per day)',
-                  hint: '8',
-                  controller: _workingHoursController,
-                  prefixIcon: Icons.timer_outlined,
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: CustomTextField(
-                  label: 'Break Duration (minutes)',
-                  hint: '30',
-                  controller: _breakDurationController,
-                  prefixIcon: Icons.free_breakfast_outlined,
-                  keyboardType: TextInputType.number,
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: SwitchListTile(
-                  title: Text(
-                    'Check-in Required',
-                    style: GoogleFonts.poppins(fontSize: 12.sp),
+              Row(
+                children: [
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Check-in Time',
+                      hint: '09:00 AM',
+                      controller: _checkInTimeController,
+                      prefixIcon: Icons.login_rounded,
+                    ),
                   ),
-                  value: _isCheckInRequired,
-                  onChanged: (val) => setState(() => _isCheckInRequired = val),
-                  activeColor: AppColors.primary,
-                  contentPadding: EdgeInsets.zero,
-                ),
-              ),
-              Expanded(
-                child: SwitchListTile(
-                  title: Text(
-                    'Check-out Required',
-                    style: GoogleFonts.poppins(fontSize: 12.sp),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Check-out Time',
+                      hint: '06:00 PM',
+                      controller: _checkOutTimeController,
+                      prefixIcon: Icons.logout_rounded,
+                    ),
                   ),
-                  value: _isCheckOutRequired,
-                  onChanged: (val) => setState(() => _isCheckOutRequired = val),
-                  activeColor: AppColors.primary,
-                  contentPadding: EdgeInsets.zero,
-                ),
+                ],
+              ),
+              SizedBox(height: 12.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Working Hours (per day)',
+                      hint: '8',
+                      controller: _workingHoursController,
+                      prefixIcon: Icons.timer_outlined,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: CustomTextField(
+                      label: 'Break Duration (minutes)',
+                      hint: '30',
+                      controller: _breakDurationController,
+                      prefixIcon: Icons.free_breakfast_outlined,
+                      keyboardType: TextInputType.number,
+                    ),
+                  ),
+                ],
+              ),
+              SizedBox(height: 12.h),
+              Row(
+                children: [
+                  Expanded(
+                    child: SwitchListTile(
+                      title: Text(
+                        'Check-in Required',
+                        style: GoogleFonts.poppins(fontSize: 12.sp),
+                      ),
+                      value: _isCheckInRequired,
+                      onChanged: (val) => setState(() => _isCheckInRequired = val),
+                      activeColor: AppColors.primary,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                  Expanded(
+                    child: SwitchListTile(
+                      title: Text(
+                        'Check-out Required',
+                        style: GoogleFonts.poppins(fontSize: 12.sp),
+                      ),
+                      value: _isCheckOutRequired,
+                      onChanged: (val) => setState(() => _isCheckOutRequired = val),
+                      activeColor: AppColors.primary,
+                      contentPadding: EdgeInsets.zero,
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildAdvancedCard() {
-    return Container(
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          SwitchListTile(
-            title: Text(
-              'Allow Mobile Check-in',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Employees can check-in from mobile app',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: true,
-            onChanged: (val) {},
-            activeColor: AppColors.primary,
-          ),
-          SwitchListTile(
-            title: Text(
-              'Allow Remote Check-in',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Employees can check-in from outside office',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: _allowRemoteCheckIn,
-            onChanged: (val) => setState(() => _allowRemoteCheckIn = val),
-            activeColor: AppColors.primary,
-          ),
-          SwitchListTile(
-            title: Text(
-              'Send Email Notifications',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Notify HR on attendance changes',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: _sendEmailNotifications,
-            onChanged: (val) => setState(() => _sendEmailNotifications = val),
-            activeColor: AppColors.primary,
-          ),
-          SwitchListTile(
-            title: Text(
-              'Auto-approve Leave',
-              style: GoogleFonts.poppins(fontSize: 13.sp),
-            ),
-            subtitle: Text(
-              'Auto-approve leave requests (for testing)',
-              style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
-            ),
-            value: _autoApproveLeave,
-            onChanged: (val) => setState(() => _autoApproveLeave = val),
-            activeColor: AppColors.primary,
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -632,34 +541,37 @@ class _OfficeSettingsScreenState extends State<OfficeSettingsScreen> {
       context: context,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
       builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: EdgeInsets.all(16.r),
-              child: Text(
-                'Select Time Zone',
-                style: GoogleFonts.poppins(
-                  fontSize: 16.sp,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
+        child: Material(
+          color: Colors.transparent,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: EdgeInsets.all(16.r),
+                child: Text(
+                  'Select Time Zone',
+                  style: GoogleFonts.poppins(
+                    fontSize: 16.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textPrimary,
+                  ),
                 ),
               ),
-            ),
-            ..._timeZones.map((tz) => ListTile(
-              title: Text(tz),
-              trailing: _selectedTimeZone == tz
-                  ? Icon(Icons.check_circle, color: AppColors.primary)
-                  : null,
-              onTap: () {
-                setState(() {
-                  _selectedTimeZone = tz;
-                });
-                Navigator.pop(context);
-              },
-            )),
-            SizedBox(height: 20.h),
-          ],
+              ..._timeZones.map((tz) => ListTile(
+                    title: Text(tz),
+                    trailing: _selectedTimeZone == tz
+                        ? Icon(Icons.check_circle, color: AppColors.primary)
+                        : null,
+                    onTap: () {
+                      setState(() {
+                        _selectedTimeZone = tz;
+                      });
+                      Navigator.pop(context);
+                    },
+                  )),
+              SizedBox(height: 20.h),
+            ],
+          ),
         ),
       ),
     );

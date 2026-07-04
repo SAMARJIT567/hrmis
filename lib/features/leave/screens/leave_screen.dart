@@ -216,6 +216,7 @@ class _LeaveScreenState extends State<LeaveScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
+        heroTag: 'apply_leave_fab',
         onPressed: () {},
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,

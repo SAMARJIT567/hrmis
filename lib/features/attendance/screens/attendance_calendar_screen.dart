@@ -97,10 +97,12 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         centerTitle: false,
         backgroundColor: Colors.white,
         elevation: 0,
-        leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primary),
-          onPressed: () => Navigator.pop(context),
-        ),
+        leading: Navigator.canPop(context)
+            ? IconButton(
+                icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primary),
+                onPressed: () => Navigator.pop(context),
+              )
+            : null,
         actions: [_buildMonthSelector()],
       ),
       body: SingleChildScrollView(

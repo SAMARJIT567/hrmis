@@ -99,7 +99,7 @@ class EmployeeProvider extends ChangeNotifier {
   }
 
   void addEmployee(Employee emp) {
-    _allEmployees.add(emp);
+    _allEmployees.insert(0, emp);
     _applyFilters();
   }
 

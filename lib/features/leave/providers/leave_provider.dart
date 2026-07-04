@@ -13,9 +13,28 @@ class LeaveProvider extends ChangeNotifier {
   bool _isLoading = false;
   String _filter = 'All';
 
+  List<LeavePolicy> _policies = [
+    const LeavePolicy(id: 'CL', title: 'Casual Leave', description: 'Used for unplanned personal matters or short-term needs.', totalDays: 12, usedDays: 4, iconName: 'event_note_rounded', colorValue: 0xFF1E40AF),
+    const LeavePolicy(id: 'SL', title: 'Sick Leave', description: 'Used for health issues; requires certificate for 3+ days.', totalDays: 10, usedDays: 2, iconName: 'medical_services_outlined', colorValue: 0xFFEF4444),
+    const LeavePolicy(id: 'EL', title: 'Earned Leave', description: 'Earned leaves for planned vacations and long rests.', totalDays: 15, usedDays: 5, iconName: 'beach_access_rounded', colorValue: 0xFF10B981),
+    const LeavePolicy(id: 'ML', title: 'Maternity Leave', description: 'Paid leave for expecting mothers (continuous block).', totalDays: 182, usedDays: 0, iconName: 'pregnant_woman_rounded', colorValue: 0xFF7C3AED),
+    const LeavePolicy(id: 'PL', title: 'Paternity Leave', description: 'Granted to male employees around spouse delivery.', totalDays: 15, usedDays: 0, iconName: 'child_care_rounded', colorValue: 0xFF0EA5E9),
+    const LeavePolicy(id: 'CO', title: 'Compensatory Off', description: 'Credit for working on holidays or weekly off days.', totalDays: 5, usedDays: 1, iconName: 'celebration_rounded', colorValue: 0xFFF59E0B),
+    const LeavePolicy(id: 'BL', title: 'Bereavement Leave', description: 'Granted during a family tragedy or mourning.', totalDays: 5, usedDays: 0, iconName: 'heart_broken_rounded', colorValue: 0xFF475569),
+  ];
+
   List<LeaveRequest> get requests => _filtered;
   bool get isLoading => _isLoading;
   String get currentFilter => _filter;
+  List<LeavePolicy> get policies => _policies;
+
+  void updatePolicy(String id, int newTotal) {
+    final idx = _policies.indexWhere((p) => p.id == id);
+    if (idx != -1) {
+      _policies[idx] = _policies[idx].copyWith(totalDays: newTotal);
+      notifyListeners();
+    }
+  }
 
   int get pendingCount => _all.where((r) => r.status == 'pending').length;
   int get approvedCount => _all.where((r) => r.status == 'approved').length;

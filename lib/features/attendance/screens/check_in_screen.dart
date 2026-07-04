@@ -1,19 +1,16 @@
 // ============================================================
 // 📁 lib/features/attendance/screens/check_in_screen.dart
 // ============================================================
-// Actual Check-in screen with Live Camera Feed and Google Maps
-// ============================================================
-
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:camera/camera.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
-import 'package:geolocator/geolocator.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart';
 
 import '../../../core/constants/app_colors.dart';
-import '../../../core/constants/app_dimensions.dart';
 import '../../../core/services/location_service.dart';
 import '../../../core/utils/helpers.dart';
 import '../providers/office_settings_provider.dart';
@@ -29,17 +26,14 @@ class CheckInScreen extends StatefulWidget {
 class _CheckInScreenState extends State<CheckInScreen> {
   final LocationService _locationService = LocationService();
   
-  // ─── Camera ──────────────────────────────────────────────────
   CameraController? _cameraController;
   List<CameraDescription>? _cameras;
   bool _isCameraInitialized = false;
 
-  // ─── Map ─────────────────────────────────────────────────────
   GoogleMapController? _mapController;
-  LatLng _currentPosition = const LatLng(0, 0);
+  LatLng _currentPosition = const LatLng(28.6139, 77.2090); // Default to Delhi
   Set<Marker> _markers = {};
   
-  // ─── State ──────────────────────────────────────────────────
   bool _isLoading = true;
   bool _isWithinRange = false;
   double _distanceFromOffice = 0.0;
@@ -51,114 +45,67 @@ class _CheckInScreenState extends State<CheckInScreen> {
   }
 
   Future<void> _initializeAll() async {
+    if (!mounted) return;
     setState(() => _isLoading = true);
     
-    // 1. Initialize Camera
+    // 1. Camera Init
     try {
       _cameras = await availableCameras();
       if (_cameras != null && _cameras!.isNotEmpty) {
-        // Find front camera
         final frontCamera = _cameras!.firstWhere(
           (camera) => camera.lensDirection == CameraLensDirection.front,
           orElse: () => _cameras![0],
         );
-        
-        _cameraController = CameraController(
-          frontCamera,
-          ResolutionPreset.medium,
-          enableAudio: false,
-        );
-        
+        _cameraController = CameraController(frontCamera, ResolutionPreset.medium, enableAudio: false);
         await _cameraController!.initialize();
         if (mounted) setState(() => _isCameraInitialized = true);
       }
     } catch (e) {
-      debugPrint('❌ Camera initialization failed: $e');
+      debugPrint('❌ Camera error: $e');
     }
 
-    // 2. Initialize Location & Range
-    await _locationService.checkLocationServices();
-    await _locationService.requestPermission();
-    
-    final locationData = await _locationService.getCurrentLocation();
-    final settings = context.read<OfficeSettingsProvider>().settings;
-    
-    _currentPosition = LatLng(
-      locationData['latitude'] ?? 0.0,
-      locationData['longitude'] ?? 0.0,
-    );
+    // 2. Location Init
+    try {
+      await _locationService.checkLocationServices();
+      await _locationService.requestPermission();
+      
+      final locationData = await _locationService.getCurrentLocation();
+      final settings = context.read<OfficeSettingsProvider>().settings;
+      
+      if (locationData['latitude'] != null) {
+        _currentPosition = LatLng(locationData['latitude'], locationData['longitude']);
+      }
 
-    _distanceFromOffice = _locationService.calculateDistance(
-      lat1: _currentPosition.latitude,
-      lon1: _currentPosition.longitude,
-      lat2: settings.latitude,
-      lon2: settings.longitude,
-    ) * 1000; // to meters
-    
-    _isWithinRange = _distanceFromOffice <= settings.allowedRadiusMeters;
-    
-    _updateMarkers(settings);
-    
-    setState(() => _isLoading = false);
-
-    if (!_isWithinRange) {
-      _showOutsideRangePopup();
+      if (settings.latitude != 0) {
+        _distanceFromOffice = _locationService.calculateDistance(
+          lat1: _currentPosition.latitude,
+          lon1: _currentPosition.longitude,
+          lat2: settings.latitude,
+          lon2: settings.longitude,
+        ) * 1000;
+        
+        _isWithinRange = _distanceFromOffice <= settings.allowedRadiusMeters;
+        _updateMarkers(settings);
+      }
+    } catch (e) {
+      debugPrint('❌ Location error: $e');
     }
+    
+    if (mounted) setState(() => _isLoading = false);
   }
 
   void _updateMarkers(settings) {
     _markers = {
       Marker(
-        markerId: const MarkerId('current_location'),
+        markerId: const MarkerId('current'),
         position: _currentPosition,
-        infoWindow: const InfoWindow(title: 'Your Location'),
         icon: BitmapDescriptor.defaultMarkerWithHue(BitmapDescriptor.hueAzure),
       ),
       Marker(
-        markerId: const MarkerId('office_location'),
+        markerId: const MarkerId('office'),
         position: LatLng(settings.latitude, settings.longitude),
-        infoWindow: InfoWindow(title: settings.officeName),
       ),
     };
-  }
-
-  void _showOutsideRangePopup() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
-        title: Column(
-          children: [
-            Icon(Icons.location_off_rounded, color: AppColors.error, size: 48.sp),
-            SizedBox(height: 16.h),
-            Text(
-              'Outside Range',
-              style: GoogleFonts.poppins(fontWeight: FontWeight.w700),
-            ),
-          ],
-        ),
-        content: Text(
-          'Kindly go to the office location.\nYou are currently ${(_distanceFromOffice).toStringAsFixed(0)}m away from the office.',
-          textAlign: TextAlign.center,
-          style: GoogleFonts.poppins(fontSize: 13.sp),
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-                padding: EdgeInsets.symmetric(horizontal: 32.w, vertical: 12.h),
-              ),
-              child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-            ),
-          ),
-          SizedBox(height: 8.h),
-        ],
-      ),
-    );
   }
 
   @override
@@ -173,21 +120,17 @@ class _CheckInScreenState extends State<CheckInScreen> {
     final settings = context.watch<OfficeSettingsProvider>().settings;
     
     return Scaffold(
-      backgroundColor: Colors.white,
+      backgroundColor: const Color(0xFFF8F9FE),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 0,
+        elevation: 0.5,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primaryDark, size: 20.sp),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: const Color(0xFF1A237E), size: 20.sp),
           onPressed: () => Navigator.pop(context),
         ),
         title: Text(
           'Check In',
-          style: GoogleFonts.poppins(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
+          style: GoogleFonts.poppins(fontSize: 18.sp, fontWeight: FontWeight.w600, color: const Color(0xFF1A237E)),
         ),
         centerTitle: true,
       ),
@@ -197,24 +140,15 @@ class _CheckInScreenState extends State<CheckInScreen> {
             padding: EdgeInsets.symmetric(horizontal: 20.w),
             child: Column(
               children: [
-                SizedBox(height: 10.h),
-                // ─── Camera Preview ────────────────────────────
+                SizedBox(height: 16.h),
                 _buildCameraSection(),
                 SizedBox(height: 20.h),
-
-                // ─── Office Info Card ──────────────────────────
                 _buildOfficeInfoCard(settings),
                 SizedBox(height: 16.h),
-
-                // ─── Google Map ───────────────────────────────
                 _buildMapSection(settings),
                 SizedBox(height: 16.h),
-
-                // ─── Distance Indicator ────────────────────────
                 _buildDistanceIndicator(settings),
                 SizedBox(height: 24.h),
-
-                // ─── Submit Button ─────────────────────────────
                 _buildSubmitButton(),
                 SizedBox(height: 30.h),
               ],
@@ -225,136 +159,77 @@ class _CheckInScreenState extends State<CheckInScreen> {
 
   Widget _buildCameraSection() {
     return Container(
-      height: 280.h,
+      height: 220.h,
       width: double.infinity,
       decoration: BoxDecoration(
         color: Colors.black,
         borderRadius: BorderRadius.circular(24.r),
-        border: Border.all(color: AppColors.primary.withOpacity(0.5), width: 2),
+        border: Border.all(color: const Color(0xFF3F51B5).withOpacity(0.3), width: 1.5),
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(22.r),
-        child: _isCameraInitialized && _cameraController != null
-            ? Stack(
-                fit: StackFit.expand,
-                children: [
-                  CameraPreview(_cameraController!),
-                  _buildCameraOverlay(),
-                ],
-              )
-            : const Center(child: CircularProgressIndicator(color: Colors.white)),
-      ),
-    );
-  }
-
-  Widget _buildCameraOverlay() {
-    return Stack(
-      children: [
-        Positioned(
-          top: 16.r,
-          right: 16.r,
-          child: Container(
-            padding: EdgeInsets.all(8.r),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              shape: BoxShape.circle,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_isCameraInitialized && _cameraController != null)
+              CameraPreview(_cameraController!)
+            else
+              const Center(child: CircularProgressIndicator(color: Colors.white)),
+            Positioned(
+              top: 12.r,
+              right: 12.r,
+              child: Container(
+                padding: EdgeInsets.all(8.r),
+                decoration: BoxDecoration(color: Colors.black45, shape: BoxShape.circle),
+                child: Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 18.sp),
+              ),
             ),
-            child: Icon(Icons.flip_camera_ios_rounded, color: Colors.white, size: 20.sp),
-          ),
-        ),
-        Positioned(
-          bottom: 16.r,
-          right: 16.r,
-          child: Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: Colors.black.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(20.r),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.camera_front_rounded, color: Colors.white, size: 14.sp),
-                SizedBox(width: 6.w),
-                Text(
-                  'Front Camera',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w500,
-                  ),
+            Positioned(
+              bottom: 12.r,
+              right: 12.r,
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12.r)),
+                child: Row(
+                  children: [
+                    Icon(Icons.camera_front_rounded, color: Colors.white, size: 12.sp),
+                    SizedBox(width: 4.w),
+                    Text('Front Camera', style: GoogleFonts.poppins(color: Colors.white, fontSize: 10.sp, fontWeight: FontWeight.w500)),
+                  ],
                 ),
-              ],
+              ),
             ),
-          ),
+          ],
         ),
-      ],
+      ),
     );
   }
 
   Widget _buildOfficeInfoCard(settings) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 12.h),
+      padding: EdgeInsets.all(16.r),
       decoration: BoxDecoration(
-        gradient: AppColors.primaryGradient,
+        gradient: const LinearGradient(colors: [Color(0xFF2962FF), Color(0xFF3D5AFE)], begin: Alignment.centerLeft, end: Alignment.centerRight),
         borderRadius: BorderRadius.circular(16.r),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.primary.withOpacity(0.3),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        boxShadow: [BoxShadow(color: Colors.blue.withOpacity(0.3), blurRadius: 10, offset: const Offset(0, 4))],
       ),
       child: Row(
         children: [
-          Container(
-            padding: EdgeInsets.all(10.r),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(12.r),
-            ),
-            child: Icon(Icons.business_rounded, color: Colors.white, size: 24.sp),
-          ),
+          Icon(Icons.business_rounded, color: Colors.white, size: 28.sp),
           SizedBox(width: 14.w),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  settings.officeName,
-                  style: GoogleFonts.poppins(
-                    color: Colors.white,
-                    fontSize: 15.sp,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  'Radius: ${settings.allowedRadiusMeters.toStringAsFixed(0)} meters',
-                  style: GoogleFonts.poppins(
-                    color: Colors.white.withOpacity(0.8),
-                    fontSize: 12.sp,
-                  ),
-                ),
+                Text(settings.officeName.isEmpty ? 'Office Not Set' : settings.officeName, style: GoogleFonts.poppins(color: Colors.white, fontSize: 15.sp, fontWeight: FontWeight.w700)),
+                Text('Radius: ${settings.allowedRadiusMeters.toInt()} meters', style: GoogleFonts.poppins(color: Colors.white70, fontSize: 11.sp)),
               ],
             ),
           ),
           Container(
-            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20.r),
-              border: Border.all(color: Colors.white.withOpacity(0.3)),
-            ),
-            child: Text(
-              _isWithinRange ? 'INSIDE ZONE' : 'OUTSIDE ZONE',
-              style: GoogleFonts.poppins(
-                color: Colors.white,
-                fontSize: 10.sp,
-                fontWeight: FontWeight.w700,
-                letterSpacing: 0.5,
-              ),
-            ),
+            padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+            decoration: BoxDecoration(color: Colors.white.withOpacity(0.15), borderRadius: BorderRadius.circular(20.r)),
+            child: Text(_isWithinRange ? 'INSIDE ZONE' : 'OUTSIDE ZONE', style: GoogleFonts.poppins(color: Colors.white, fontSize: 9.sp, fontWeight: FontWeight.w700)),
           ),
         ],
       ),
@@ -367,29 +242,27 @@ class _CheckInScreenState extends State<CheckInScreen> {
       width: double.infinity,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20.r),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: Colors.black12),
+        color: Colors.white,
       ),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(18.r),
         child: GoogleMap(
-          initialCameraPosition: CameraPosition(
-            target: _currentPosition,
-            zoom: 15,
-          ),
-          onMapCreated: (controller) => _mapController = controller,
+          key: const ValueKey('attendance_map'),
+          initialCameraPosition: CameraPosition(target: _currentPosition, zoom: 15),
+          onMapCreated: (c) {
+            _mapController = c;
+            if(settings.latitude != 0) {
+               _mapController?.animateCamera(CameraUpdate.newLatLng(LatLng(settings.latitude, settings.longitude)));
+            }
+          },
           markers: _markers,
           myLocationEnabled: true,
-          myLocationButtonEnabled: false,
+          myLocationButtonEnabled: true,
           zoomControlsEnabled: false,
-          circles: {
-            Circle(
-              circleId: const CircleId('office_radius'),
-              center: LatLng(settings.latitude, settings.longitude),
-              radius: settings.allowedRadiusMeters,
-              fillColor: AppColors.primary.withOpacity(0.1),
-              strokeColor: AppColors.primary.withOpacity(0.5),
-              strokeWidth: 2,
-            ),
+          mapToolbarEnabled: true,
+          gestureRecognizers: <Factory<OneSequenceGestureRecognizer>>{
+            Factory<OneSequenceGestureRecognizer>(() => EagerGestureRecognizer()),
           },
         ),
       ),
@@ -397,16 +270,9 @@ class _CheckInScreenState extends State<CheckInScreen> {
   }
 
   Widget _buildDistanceIndicator(settings) {
-    double progress = (_distanceFromOffice / settings.allowedRadiusMeters).clamp(0.0, 1.0);
-    if (!_isWithinRange) progress = 1.0;
-
     return Container(
       padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AppColors.border),
-      ),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16.r), border: Border.all(color: Colors.black12)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -415,52 +281,30 @@ class _CheckInScreenState extends State<CheckInScreen> {
             children: [
               Row(
                 children: [
-                  Icon(Icons.location_on_rounded, color: AppColors.success, size: 18.sp),
-                  SizedBox(width: 8.w),
-                  Text(
-                    'Distance to Office:',
-                    style: GoogleFonts.poppins(
-                      fontSize: 13.sp,
-                      color: AppColors.textSecondary,
-                    ),
-                  ),
+                  Icon(Icons.location_on, color: const Color(0xFF00C853), size: 16.sp),
+                  SizedBox(width: 4.w),
+                  Text('Distance to Office:', style: GoogleFonts.poppins(fontSize: 13.sp, color: Colors.black54)),
                 ],
               ),
-              Text(
-                '${_distanceFromOffice.toStringAsFixed(0)} / ${settings.allowedRadiusMeters.toStringAsFixed(0)} m',
-                style: GoogleFonts.poppins(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w700,
-                  color: _isWithinRange ? AppColors.success : AppColors.error,
-                ),
-              ),
+              Text('${_distanceFromOffice.toInt()} / ${settings.allowedRadiusMeters.toInt()} m', style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w700, color: const Color(0xFF00C853))),
             ],
           ),
-          SizedBox(height: 12.h),
-          LinearProgressIndicator(
-            value: progress,
-            backgroundColor: AppColors.border,
-            color: _isWithinRange ? AppColors.success : AppColors.error,
-            minHeight: 6.h,
+          SizedBox(height: 10.h),
+          ClipRRect(
             borderRadius: BorderRadius.circular(10.r),
+            child: LinearProgressIndicator(
+              value: (settings.allowedRadiusMeters > 0) ? (_distanceFromOffice / settings.allowedRadiusMeters).clamp(0.0, 1.0) : 0.0,
+              backgroundColor: Colors.black12,
+              color: const Color(0xFF00C853),
+              minHeight: 6.h,
+            ),
           ),
           SizedBox(height: 8.h),
           Row(
             children: [
-              Icon(
-                _isWithinRange ? Icons.check_box_rounded : Icons.warning_rounded,
-                color: _isWithinRange ? AppColors.success : AppColors.error,
-                size: 14.sp,
-              ),
+              Icon(_isWithinRange ? Icons.check_box : Icons.error, color: const Color(0xFF00C853), size: 14.sp),
               SizedBox(width: 6.w),
-              Text(
-                _isWithinRange ? 'You are within office zone' : 'You are outside office zone',
-                style: GoogleFonts.poppins(
-                  fontSize: 11.sp,
-                  color: _isWithinRange ? AppColors.success : AppColors.error,
-                  fontWeight: FontWeight.w500,
-                ),
-              ),
+              Text(_isWithinRange ? 'You are within office zone' : 'You are outside office zone', style: GoogleFonts.poppins(fontSize: 11.sp, color: const Color(0xFF00C853), fontWeight: FontWeight.w500)),
             ],
           ),
         ],
@@ -472,30 +316,25 @@ class _CheckInScreenState extends State<CheckInScreen> {
     return SizedBox(
       width: double.infinity,
       child: ElevatedButton.icon(
-        onPressed: _isWithinRange ? () async {
-          final provider = context.read<EmployeeAttendanceProvider>();
-          final success = await provider.checkIn();
+        onPressed: () async {
+          if (!_isWithinRange) {
+             AppHelpers.showError(context, 'You are outside the allowed zone');
+             return;
+          }
+          final success = await context.read<EmployeeAttendanceProvider>().checkIn();
           if (success && mounted) {
-            AppHelpers.showSuccess(context, 'Check-in completed successfully!');
+            AppHelpers.showSuccess(context, 'Check-in successful!');
             Navigator.pop(context);
           }
-        } : () {
-          _showOutsideRangePopup();
         },
-        icon: Icon(Icons.camera_alt_rounded, size: 20.sp),
-        label: Text(
-          'Take Selfie & Submit',
-          style: GoogleFonts.poppins(
-            fontSize: 16.sp,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
+        icon: Icon(Icons.camera_alt, size: 20.sp),
+        label: Text('Take Selfie & Submit', style: GoogleFonts.poppins(fontSize: 15.sp, fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
-          backgroundColor: _isWithinRange ? AppColors.success : Colors.grey,
+          backgroundColor: const Color(0xFF00C853),
           foregroundColor: Colors.white,
           padding: EdgeInsets.symmetric(vertical: 16.h),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14.r)),
-          elevation: 2,
+          elevation: 0,
         ),
       ),
     );

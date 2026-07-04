@@ -15,6 +15,13 @@ class AttendanceRecord {
   final String status;
   final String? workHours;
   final String? remarks;
+  final String? checkInSelfie;
+  final String? checkOutSelfie;
+  final String? checkInLocation;
+  final String? checkOutLocation;
+  final String? employeeImage;
+  final double? latitude;
+  final double? longitude;
 
   const AttendanceRecord({
     required this.id,
@@ -27,6 +34,13 @@ class AttendanceRecord {
     required this.status,
     this.workHours,
     this.remarks,
+    this.checkInSelfie,
+    this.checkOutSelfie,
+    this.checkInLocation,
+    this.checkOutLocation,
+    this.employeeImage,
+    this.latitude,
+    this.longitude,
   });
 }
 
@@ -42,6 +56,11 @@ class AttendanceMockData {
       checkOut: '06:15 PM',
       status: 'present',
       workHours: '9h 13m',
+      checkInSelfie: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=500&auto=format&fit=crop&q=60',
+      checkInLocation: 'Sector 62, Noida, UP',
+      employeeImage: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=200&auto=format&fit=crop&q=60',
+      latitude: 28.6273,
+      longitude: 77.3725,
     ),
     const AttendanceRecord(
       id: 'ATT002',
@@ -53,6 +72,11 @@ class AttendanceMockData {
       checkOut: null,
       status: 'late',
       workHours: null,
+      checkInSelfie: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=500&auto=format&fit=crop&q=60',
+      checkInLocation: 'Cyber City, Gurugram',
+      employeeImage: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=200&auto=format&fit=crop&q=60',
+      latitude: 28.4950,
+      longitude: 77.0878,
     ),
     const AttendanceRecord(
       id: 'ATT003',
@@ -75,6 +99,11 @@ class AttendanceMockData {
       checkOut: '06:00 PM',
       status: 'present',
       workHours: '9h 5m',
+      checkInSelfie: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=500&auto=format&fit=crop&q=60',
+      checkInLocation: 'Hitech City, Hyderabad',
+      employeeImage: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=200&auto=format&fit=crop&q=60',
+      latitude: 17.4435,
+      longitude: 78.3772,
     ),
     const AttendanceRecord(
       id: 'ATT005',
@@ -98,28 +127,11 @@ class AttendanceMockData {
       checkOut: '01:00 PM',
       status: 'half-day',
       workHours: '3h 50m',
-    ),
-    const AttendanceRecord(
-      id: 'ATT007',
-      employeeId: 'EMP007',
-      employeeName: 'Rohit Mishra',
-      department: 'Sales',
-      date: 'Today',
-      checkIn: '09:00 AM',
-      checkOut: '06:05 PM',
-      status: 'present',
-      workHours: '9h 5m',
-    ),
-    const AttendanceRecord(
-      id: 'ATT008',
-      employeeId: 'EMP008',
-      employeeName: 'Kavya Reddy',
-      department: 'Operations',
-      date: 'Today',
-      checkIn: '08:45 AM',
-      checkOut: '05:55 PM',
-      status: 'present',
-      workHours: '9h 10m',
+      checkInSelfie: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=500&auto=format&fit=crop&q=60',
+      checkInLocation: 'Whitefield, Bengaluru',
+      employeeImage: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=200&auto=format&fit=crop&q=60',
+      latitude: 12.9698,
+      longitude: 77.7499,
     ),
   ];
 }

@@ -260,6 +260,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ),
                   _SettingItem(Icons.lock_outline, 'Change Password', AppColors.secondary, () {}),
                   _SettingItem(Icons.notifications_none, 'Notifications', AppColors.warning, () {}),
+                  _SettingItem(Icons.account_balance_wallet_outlined, 'Leave Balance', AppColors.success, () {
+                    Navigator.pushNamed(context, '/leave-balance');
+                  }),
                 ]),
                 SizedBox(height: 20.h),
 

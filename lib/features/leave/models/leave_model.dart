@@ -12,7 +12,7 @@ class LeaveRequest {
   final String leaveType;
   final String fromDate;
   final String toDate;
-  final int days;
+  final double days;
   final String reason;
   final String status;
   final String appliedOn;
@@ -84,4 +84,36 @@ class LeaveMockData {
       status: 'pending', appliedOn: '25 May 2025',
     ),
   ];
+}
+
+class LeavePolicy {
+  final String id;
+  final String title;
+  final String description;
+  final int totalDays;
+  final int usedDays;
+  final String iconName;
+  final int colorValue;
+
+  const LeavePolicy({
+    required this.id,
+    required this.title,
+    required this.description,
+    required this.totalDays,
+    this.usedDays = 0,
+    required this.iconName,
+    required this.colorValue,
+  });
+
+  LeavePolicy copyWith({int? totalDays, int? usedDays}) {
+    return LeavePolicy(
+      id: id,
+      title: title,
+      description: description,
+      totalDays: totalDays ?? this.totalDays,
+      usedDays: usedDays ?? this.usedDays,
+      iconName: iconName,
+      colorValue: colorValue,
+    );
+  }
 }

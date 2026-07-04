@@ -80,32 +80,43 @@ class _MainNavigationState extends State<MainNavigation> {
     final auth = context.watch<AuthProvider>();
     final isAdmin = auth.isAdmin;
 
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: isAdmin ? _adminScreens : _employeeScreens,
-      ),
-      bottomNavigationBar: BottomNavigationBar(
-        type: BottomNavigationBarType.fixed,
-        currentIndex: _currentIndex,
-        onTap: (index) {
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvoked: (didPop) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
           setState(() {
-            _currentIndex = index;
+            _currentIndex = 0;
           });
-        },
-        backgroundColor: Colors.white,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textTertiary,
-        selectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500),
-        unselectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w400),
-        elevation: 8,
-        items: (isAdmin ? _adminNavItems : _employeeNavItems).map((item) {
-          return BottomNavigationBarItem(
-            icon: Icon(item.icon, size: 22.sp),
-            activeIcon: Icon(item.activeIcon, size: 22.sp),
-            label: item.label,
-          );
-        }).toList(),
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: isAdmin ? _adminScreens : _employeeScreens,
+        ),
+        bottomNavigationBar: BottomNavigationBar(
+          type: BottomNavigationBarType.fixed,
+          currentIndex: _currentIndex,
+          onTap: (index) {
+            setState(() {
+              _currentIndex = index;
+            });
+          },
+          backgroundColor: Colors.white,
+          selectedItemColor: AppColors.primary,
+          unselectedItemColor: AppColors.textTertiary,
+          selectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500),
+          unselectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w400),
+          elevation: 8,
+          items: (isAdmin ? _adminNavItems : _employeeNavItems).map((item) {
+            return BottomNavigationBarItem(
+              icon: Icon(item.icon, size: 22.sp),
+              activeIcon: Icon(item.activeIcon, size: 22.sp),
+              label: item.label,
+            );
+          }).toList(),
+        ),
       ),
     );
   }

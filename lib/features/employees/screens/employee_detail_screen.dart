@@ -53,12 +53,12 @@ class EmployeeDetailScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          _buildProfileHeader(context, employee),
-          Expanded(
-            child: SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
+      body: SingleChildScrollView(
+        physics: const BouncingScrollPhysics(),
+        child: Column(
+          children: [
+            _buildProfileHeader(context, employee),
+            Padding(
               padding: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 80.h),
               child: Column(
                 children: [
@@ -84,13 +84,11 @@ class EmployeeDetailScreen extends StatelessWidget {
                     _infoRow(Icons.email_outlined, 'Email', employee.email),
                     _infoRow(Icons.phone_outlined, 'Phone', employee.phone),
                   ]),
-                  SizedBox(height: 12.h),
-                  _buildPayrollSection(employee),
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -190,24 +188,16 @@ class EmployeeDetailScreen extends StatelessWidget {
     return Row(
       children: [
         Expanded(child: _statCard(
-          '₹${(employee.salary / 1000).toStringAsFixed(0)}K',
-          'Monthly',
+          AppHelpers.formatCurrency(employee.salary),
+          'Monthly Salary',
           Icons.currency_rupee_rounded,
           AppColors.primary,
           AppColors.primarySurface,
         )),
-        SizedBox(width: 10.w),
+        SizedBox(width: 12.w),
         Expanded(child: _statCard(
-          '${employee.leaveBalance}',
-          'Leave Left',
-          Icons.event_available_rounded,
-          AppColors.success,
-          AppColors.successLight,
-        )),
-        SizedBox(width: 10.w),
-        Expanded(child: _statCard(
-          employee.employeeType == 'Full-time' ? 'FT' : 'PT',
-          'Emp Type',
+          employee.employeeType,
+          'Employee Type',
           Icons.work_rounded,
           AppColors.secondary,
           AppColors.secondaryLight,

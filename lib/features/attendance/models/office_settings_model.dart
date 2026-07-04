@@ -99,10 +99,10 @@ class OfficeSettings {
   static OfficeSettings get defaultSettings {
     return OfficeSettings(
       id: 'default',
-      officeName: 'TechCorp Pvt. Ltd.',
-      officeAddress: 'New Delhi, India',
-      latitude: 28.6139,
-      longitude: 77.2090,
+      officeName: '',
+      officeAddress: '',
+      latitude: 0.0,
+      longitude: 0.0,
       checkInTime: '09:00 AM',
       checkOutTime: '06:00 PM',
       workingHoursPerDay: 8,

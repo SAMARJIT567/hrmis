@@ -4,13 +4,20 @@
 // Manages office settings state and persistence.
 // ============================================================
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../models/office_settings_model.dart';
 
 class OfficeSettingsProvider extends ChangeNotifier {
   OfficeSettings _settings = OfficeSettings.defaultSettings;
+  static const String _settingsKey = 'office_settings_key';
 
   OfficeSettings get settings => _settings;
+
+  OfficeSettingsProvider() {
+    loadSettings();
+  }
 
   void updateSettings(OfficeSettings newSettings) {
     _settings = newSettings;
@@ -22,16 +29,26 @@ class OfficeSettingsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // In a real app, we would load/save from SharedPreferences or an API
   Future<void> loadSettings() async {
-    // Simulate loading
-    await Future.delayed(const Duration(milliseconds: 200));
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final settingsJson = prefs.getString(_settingsKey);
+      if (settingsJson != null) {
+        _settings = OfficeSettings.fromJson(jsonDecode(settingsJson));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('Error loading settings: $e');
+    }
   }
 
   Future<void> saveSettings() async {
-    // Simulate saving
-    await Future.delayed(const Duration(milliseconds: 500));
-    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_settingsKey, jsonEncode(_settings.toJson()));
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error saving settings: $e');
+    }
   }
 }

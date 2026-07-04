@@ -12,6 +12,7 @@ import '../../employees/screens/add_employee_screen.dart';
 import '../../attendance/screens/attendance_screen.dart';
 import '../../leave/screens/leave_screen.dart';
 import '../../payroll/screens/payroll_screen.dart';
+import '../../leave/screens/leave_balance_screen.dart';
 
 class QuickActionButton extends StatelessWidget {
   final String label;
@@ -37,22 +38,22 @@ class QuickActionButton extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            width: 56.w,
-            height: 56.h,
+            width: 48.w,
+            height: 48.h,
             decoration: BoxDecoration(
               color: bgColor,
-              borderRadius: BorderRadius.circular(16.r),
+              borderRadius: BorderRadius.circular(14.r),
               boxShadow: [
                 BoxShadow(
-                  color: iconColor.withOpacity(0.15),
-                  blurRadius: 8,
-                  offset: const Offset(0, 3),
+                  color: iconColor.withOpacity(0.1),
+                  blurRadius: 6,
+                  offset: const Offset(0, 2),
                 ),
               ],
             ),
-            child: Icon(icon, size: 26.sp, color: iconColor),
+            child: Icon(icon, size: 22.sp, color: iconColor),
           ),
-          SizedBox(height: 8.h),
+          SizedBox(height: 2.h),
           Text(
             label,
             style: TextStyle(
@@ -77,22 +78,22 @@ class QuickActionsSection extends StatelessWidget {
     _ActionData('Add Employee', Icons.person_add_alt_1, AppColors.primary, Color(0xFFEFF6FF)),
     _ActionData('Attendance', Icons.how_to_reg, AppColors.success, Color(0xFFECFDF5)),
     _ActionData('Apply Leave', Icons.event_available, AppColors.warning, Color(0xFFFFFBEB)),
-    _ActionData('Run Payroll', Icons.account_balance, AppColors.secondary, Color(0xFFF5F3FF)),
-    _ActionData('Reports', Icons.bar_chart, AppColors.info, Color(0xFFCFFAFE)),
+    _ActionData('Leave Balance', Icons.account_balance_wallet_outlined, AppColors.secondary, Color(0xFFF5F3FF)),
+    _ActionData('Run Payroll', Icons.account_balance, AppColors.info, Color(0xFFCFFAFE)),
     _ActionData('Settings', Icons.settings_outlined, AppColors.textTertiary, Color(0xFFF8FAFC)),
   ];
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: EdgeInsets.all(AppDimensions.paddingMD.r),
+      padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 0),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(AppDimensions.radiusLG.r),
         boxShadow: [
           BoxShadow(
             color: AppColors.shadowColor,
-            blurRadius: 12,
+            blurRadius: 10,
             offset: const Offset(0, 4),
           ),
         ],
@@ -101,9 +102,9 @@ class QuickActionsSection extends StatelessWidget {
         crossAxisCount: 3,
         shrinkWrap: true,
         physics: const NeverScrollableScrollPhysics(),
-        mainAxisSpacing: 16.h,
-        crossAxisSpacing: 12.w,
-        childAspectRatio: 0.8,
+        mainAxisSpacing: 4.h,
+        crossAxisSpacing: 8.w,
+        childAspectRatio: 1.1,
         children: _actions.map((a) {
           return QuickActionButton(
             label: a.label,
@@ -146,6 +147,8 @@ class QuickActionsSection extends StatelessWidget {
                     builder: (context) => const PayrollScreen(),
                   ),
                 );
+              } else if (a.label == 'Leave Balance') {
+                Navigator.pushNamed(context, '/leave-balance');
               }
             },
           );

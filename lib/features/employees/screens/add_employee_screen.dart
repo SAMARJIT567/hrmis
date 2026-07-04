@@ -1,22 +1,16 @@
 // ============================================================
 // 📁 lib/features/employees/screens/add_employee_screen.dart
 // ============================================================
-// Screen to add new employee with all details
+// Screen to add new employee with UI matching the provided design.
 // ============================================================
 
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
-import 'dart:io';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
-import '../../../shared/widgets/custom_button.dart';
-import '../../../shared/widgets/custom_text_field.dart';
-import '../../../shared/widgets/loading_widget.dart';
-import '../../auth/providers/auth_provider.dart';
 import '../providers/employee_provider.dart';
 import '../models/employee_model.dart';
 
@@ -29,113 +23,83 @@ class AddEmployeeScreen extends StatefulWidget {
 
 class _AddEmployeeScreenState extends State<AddEmployeeScreen> {
   final _formKey = GlobalKey<FormState>();
-  final ImagePicker _imagePicker = ImagePicker();
-  File? _profileImage;
-  String? _profileImageBase64;
 
   // ─── Controllers ──────────────────────────────────────────────
+  final _empIdController = TextEditingController(text: 'EMP');
   final _nameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _departmentController = TextEditingController();
-  final _designationController = TextEditingController();
-  final _salaryController = TextEditingController();
   final _addressController = TextEditingController();
+  final _salaryController = TextEditingController();
   final _joiningDateController = TextEditingController();
-  final _genderController = TextEditingController();
-  final _employeeTypeController = TextEditingController();
+  final _dobController = TextEditingController();
+  final _emergencyNameController = TextEditingController();
+  final _emergencyPhoneController = TextEditingController();
 
   // ─── Dropdown Values ──────────────────────────────────────────
   String _selectedDepartment = 'Engineering';
   String _selectedDesignation = 'Software Developer';
-  String _selectedGender = 'Male';
   String _selectedEmployeeType = 'Full-time';
   String _selectedStatus = 'active';
+  String _selectedGender = 'Male';
+  String _selectedBloodGroup = 'O+';
 
-  final List<String> _departments = [
-    'Engineering',
-    'HR',
-    'Finance',
-    'Marketing',
-    'Design',
-    'Sales',
-    'Operations',
-    'Legal',
-  ];
-
-  final List<String> _designations = [
-    'Software Developer',
-    'Senior Developer',
-    'Team Lead',
-    'Project Manager',
-    'HR Manager',
-    'HR Executive',
-    'Finance Manager',
-    'Accounts Manager',
-    'Marketing Lead',
-    'Marketing Executive',
-    'UI/UX Designer',
-    'Graphic Designer',
-    'Sales Executive',
-    'Sales Manager',
-    'Operations Manager',
-  ];
-
-  final List<String> _genders = ['Male', 'Female', 'Other'];
+  final List<String> _departments = ['Engineering', 'HR', 'Finance', 'Marketing', 'Design', 'Sales', 'Operations'];
+  final List<String> _designations = ['Software Developer', 'Senior Developer', 'Team Lead', 'Project Manager', 'HR Manager', 'UI/UX Designer'];
   final List<String> _employeeTypes = ['Full-time', 'Part-time', 'Contract', 'Intern'];
   final List<String> _statuses = ['active', 'inactive'];
+  final List<String> _genders = ['Male', 'Female', 'Other'];
+  final List<String> _bloodGroups = ['A+', 'A-', 'B+', 'B-', 'O+', 'O-', 'AB+', 'AB-'];
 
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   bool _isLoading = false;
 
   @override
-  void dispose() {
-    _nameController.dispose();
-    _emailController.dispose();
-    _phoneController.dispose();
-    _departmentController.dispose();
-    _designationController.dispose();
-    _salaryController.dispose();
-    _addressController.dispose();
-    _joiningDateController.dispose();
-    _genderController.dispose();
-    _employeeTypeController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _empIdController.addListener(_onEmpIdChanged);
   }
 
-  Future<void> _pickImage() async {
-    try {
-      final XFile? pickedFile = await _imagePicker.pickImage(
-        source: ImageSource.gallery,
-        maxWidth: 500,
-        maxHeight: 500,
-        imageQuality: 80,
+  void _onEmpIdChanged() {
+    if (!_empIdController.text.startsWith('EMP')) {
+      _empIdController.text = 'EMP';
+      _empIdController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _empIdController.text.length),
       );
-
-      if (pickedFile != null) {
-        final File imageFile = File(pickedFile.path);
-        final bytes = await imageFile.readAsBytes();
-        setState(() {
-          _profileImage = imageFile;
-          _profileImageBase64 = 'data:image/jpeg;base64,${String.fromCharCodes(bytes)}';
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        AppHelpers.showError(context, 'Failed to pick image');
-      }
     }
   }
 
-  Future<void> _selectDate() async {
+  @override
+  void dispose() {
+    _empIdController.removeListener(_onEmpIdChanged);
+    _empIdController.dispose();
+    _nameController.dispose();
+    _emailController.dispose();
+    _passwordController.dispose();
+    _confirmPasswordController.dispose();
+    _phoneController.dispose();
+    _addressController.dispose();
+    _salaryController.dispose();
+    _joiningDateController.dispose();
+    _dobController.dispose();
+    _emergencyNameController.dispose();
+    _emergencyPhoneController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _selectDate(TextEditingController controller) async {
     final DateTime? picked = await showDatePicker(
       context: context,
       initialDate: DateTime.now(),
-      firstDate: DateTime(2020),
-      lastDate: DateTime.now(),
+      firstDate: DateTime(1970),
+      lastDate: DateTime(2100),
     );
     if (picked != null) {
       setState(() {
-        _joiningDateController.text = AppHelpers.formatDate(picked);
+        controller.text = AppHelpers.formatDate(picked);
       });
     }
   }
@@ -143,14 +107,18 @@ class _AddEmployeeScreenState extends State<AddEmployeeScreen> {
   Future<void> _saveEmployee() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    if (_passwordController.text != _confirmPasswordController.text) {
+      AppHelpers.showError(context, 'Passwords do not match');
+      return;
+    }
 
+    setState(() => _isLoading = true);
     await Future.delayed(const Duration(seconds: 1));
 
     final employee = Employee(
-      id: 'EMP${DateTime.now().millisecondsSinceEpoch}'.substring(0, 8),
+      id: _empIdController.text.isEmpty 
+          ? 'EMP${DateTime.now().millisecondsSinceEpoch}'.substring(0, 8)
+          : _empIdController.text,
       name: _nameController.text.trim(),
       email: _emailController.text.trim(),
       phone: _phoneController.text.trim(),
@@ -158,415 +126,362 @@ class _AddEmployeeScreenState extends State<AddEmployeeScreen> {
       designation: _selectedDesignation,
       employeeType: _selectedEmployeeType,
       status: _selectedStatus,
-      joiningDate: _joiningDateController.text.trim(),
-      salary: double.tryParse(_salaryController.text.trim()) ?? 0,
+      joiningDate: _joiningDateController.text,
+      salary: double.tryParse(_salaryController.text) ?? 0,
       gender: _selectedGender,
       address: _addressController.text.trim(),
       leaveBalance: 12,
-      avatarUrl: _profileImageBase64,
     );
 
     context.read<EmployeeProvider>().addEmployee(employee);
-
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = false);
 
     if (mounted) {
       AppHelpers.showSuccess(context, 'Employee added successfully!');
-      Navigator.pop(context, true);
+      Navigator.pop(context);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: Text(
-          'Add Employee',
-          style: GoogleFonts.poppins(
-            fontSize: 18.sp,
-            fontWeight: FontWeight.w600,
-            color: AppColors.textPrimary,
-          ),
-        ),
         backgroundColor: Colors.white,
         elevation: 0,
+        centerTitle: true,
         leading: IconButton(
-          icon: Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primary),
+          icon: Icon(Icons.arrow_back_ios_new_rounded, color: const Color(0xFF1E3A8A), size: 20.sp),
           onPressed: () => Navigator.pop(context),
         ),
-        actions: [
-          TextButton(
-            onPressed: _saveEmployee,
-            child: Text(
-              'Save',
-              style: GoogleFonts.poppins(
-                fontSize: 14.sp,
-                fontWeight: FontWeight.w600,
-                color: AppColors.primary,
-              ),
-            ),
+        title: Text(
+          'Add New Employee',
+          style: GoogleFonts.poppins(
+            fontSize: 18.sp,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF1E3A8A),
           ),
-        ],
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              physics: const BouncingScrollPhysics(),
-              padding: EdgeInsets.all(16.r),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // ─── Profile Photo ──────────────────────────
-                    _buildProfilePhoto(),
-                    SizedBox(height: 20.h),
-
-                    // ─── Personal Information ──────────────────
-                    _sectionTitle('Personal Information'),
-                    SizedBox(height: 10.h),
-                    _buildPersonalInfoCard(),
-                    SizedBox(height: 16.h),
-
-                    // ─── Work Information ──────────────────────
-                    _sectionTitle('Work Information'),
-                    SizedBox(height: 10.h),
-                    _buildWorkInfoCard(),
-                    SizedBox(height: 16.h),
-
-                    // ─── Additional Information ─────────────────
-                    _sectionTitle('Additional Information'),
-                    SizedBox(height: 10.h),
-                    _buildAdditionalInfoCard(),
-                    SizedBox(height: 24.h),
-
-                    // ─── Save Button ────────────────────────────
-                    CustomButton(
-                      label: 'Add Employee',
-                      onPressed: _saveEmployee,
-                      prefixIcon: Icons.person_add_rounded,
-                    ),
-                    SizedBox(height: 20.h),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _sectionTitle(String title) {
-    return Text(
-      title,
-      style: GoogleFonts.poppins(
-        fontSize: 14.sp,
-        fontWeight: FontWeight.w600,
-        color: AppColors.textPrimary,
-      ),
-    );
-  }
-
-  Widget _buildProfilePhoto() {
-    return Center(
-      child: Column(
-        children: [
-          GestureDetector(
-            onTap: _pickImage,
-            child: Container(
-              width: 100.w,
-              height: 100.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: AppColors.primarySurface,
-                border: Border.all(color: AppColors.primary, width: 2),
-                image: _profileImage != null
-                    ? DecorationImage(
-                        image: FileImage(_profileImage!),
-                        fit: BoxFit.cover,
-                      )
-                    : null,
-              ),
-              child: _profileImage == null
-                  ? Icon(
-                      Icons.camera_alt,
-                      size: 30.sp,
-                      color: AppColors.primary,
-                    )
-                  : null,
-            ),
-          ),
-          SizedBox(height: 8.h),
-          GestureDetector(
-            onTap: _pickImage,
-            child: Text(
-              _profileImage == null ? 'Add Photo' : 'Change Photo',
-              style: GoogleFonts.poppins(
-                fontSize: 12.sp,
-                fontWeight: FontWeight.w500,
-                color: AppColors.primary,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildPersonalInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          CustomTextField(
-            label: 'Full Name *',
-            hint: 'Enter employee full name',
-            controller: _nameController,
-            prefixIcon: Icons.person_outline,
-            validator: (val) =>
-                val == null || val.isEmpty ? 'Please enter name' : null,
-          ),
-          SizedBox(height: 12.h),
-          CustomTextField(
-            label: 'Email Address *',
-            hint: 'Enter email address',
-            controller: _emailController,
-            keyboardType: TextInputType.emailAddress,
-            prefixIcon: Icons.email_outlined,
-            validator: (val) {
-              if (val == null || val.isEmpty) return 'Please enter email';
-              if (!val.contains('@')) return 'Enter valid email';
-              return null;
-            },
-          ),
-          SizedBox(height: 12.h),
-          CustomTextField(
-            label: 'Phone Number *',
-            hint: 'Enter phone number',
-            controller: _phoneController,
-            keyboardType: TextInputType.phone,
-            prefixIcon: Icons.phone_outlined,
-            validator: (val) =>
-                val == null || val.isEmpty ? 'Please enter phone number' : null,
-          ),
-          SizedBox(height: 12.h),
-          CustomTextField(
-            label: 'Address',
-            hint: 'Enter address',
-            controller: _addressController,
-            maxLines: 2,
-            prefixIcon: Icons.location_on_outlined,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildWorkInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          _buildDropdownField(
-            label: 'Department *',
-            value: _selectedDepartment,
-            items: _departments,
-            icon: Icons.business_outlined,
-            onChanged: (val) => setState(() => _selectedDepartment = val!),
-            validator: (val) => val == null ? 'Please select department' : null,
-          ),
-          SizedBox(height: 12.h),
-          _buildDropdownField(
-            label: 'Designation *',
-            value: _selectedDesignation,
-            items: _designations,
-            icon: Icons.work_outline,
-            onChanged: (val) => setState(() => _selectedDesignation = val!),
-            validator: (val) => val == null ? 'Please select designation' : null,
-          ),
-          SizedBox(height: 12.h),
-          Row(
+      body: _isLoading 
+        ? const Center(child: CircularProgressIndicator())
+        : Column(
             children: [
               Expanded(
-                child: CustomTextField(
-                  label: 'Salary *',
-                  hint: 'Enter salary (₹)',
-                  controller: _salaryController,
-                  keyboardType: TextInputType.number,
-                  prefixIcon: Icons.currency_rupee_rounded,
-                  validator: (val) {
-                    if (val == null || val.isEmpty) return 'Enter salary';
-                    if (double.tryParse(val) == null) return 'Enter valid salary';
-                    return null;
-                  },
-                ),
-              ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildDropdownField(
-                  label: 'Employee Type',
-                  value: _selectedEmployeeType,
-                  items: _employeeTypes,
-                  icon: Icons.category_outlined,
-                  onChanged: (val) => setState(() => _selectedEmployeeType = val!),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 12.h),
-          Row(
-            children: [
-              Expanded(
-                child: GestureDetector(
-                  onTap: _selectDate,
-                  child: Container(
-                    padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 18.h),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceVariant,
-                      borderRadius: BorderRadius.circular(12.r),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.symmetric(horizontal: 20.w),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Icon(Icons.calendar_today, size: 18.sp, color: AppColors.primary),
-                        SizedBox(width: 10.w),
-                        Expanded(
-                          child: Text(
-                            _joiningDateController.text.isEmpty
-                                ? 'Joining Date *'
-                                : _joiningDateController.text,
-                            style: GoogleFonts.poppins(
-                              fontSize: 13.sp,
-                              color: _joiningDateController.text.isEmpty
-                                  ? AppColors.textTertiary
-                                  : AppColors.textPrimary,
-                            ),
+                        SizedBox(height: 10.h),
+                        
+                        // ─── Basic Information ──────────────────────
+                        _sectionHeader(Icons.person_outline_rounded, 'Basic Information'),
+                        _buildLabel('Employee ID'),
+                        _buildTextField(
+                          hint: 'Enter ID (e.g., 001)',
+                          controller: _empIdController,
+                          icon: Icons.badge_outlined,
+                          validator: (v) {
+                            if (v == null || v.isEmpty || v == 'EMP') {
+                              return 'Employee ID is required';
+                            }
+                            final employees = context.read<EmployeeProvider>().allEmployees;
+                            final exists = employees.any((e) => e.id.toUpperCase() == v.toUpperCase());
+                            if (exists) {
+                              return 'Try different id this id existing';
+                            }
+                            return null;
+                          },
+                        ),
+                        _buildLabel('Full Name *'),
+                        _buildTextField(
+                          hint: 'Enter employee full name',
+                          controller: _nameController,
+                          icon: Icons.person_outline,
+                          validator: (v) => v!.isEmpty ? 'Name is required' : null,
+                        ),
+                        _buildLabel('Email Address *'),
+                        _buildTextField(
+                          hint: 'Enter email address',
+                          controller: _emailController,
+                          icon: Icons.email_outlined,
+                          validator: (v) => v!.isEmpty ? 'Email is required' : null,
+                        ),
+                        _buildLabel('Password *'),
+                        _buildTextField(
+                          hint: 'Enter password (min 6 characters)',
+                          controller: _passwordController,
+                          icon: Icons.lock_outline,
+                          obscure: _obscurePassword,
+                          suffix: IconButton(
+                            icon: Icon(_obscurePassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20.sp, color: Colors.grey),
+                            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                           ),
                         ),
+                        _buildLabel('Confirm Password *'),
+                        _buildTextField(
+                          hint: 'Re-enter password',
+                          controller: _confirmPasswordController,
+                          icon: Icons.lock_outline,
+                          obscure: _obscureConfirmPassword,
+                          suffix: IconButton(
+                            icon: Icon(_obscureConfirmPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined, size: 20.sp, color: Colors.grey),
+                            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+                          ),
+                        ),
+
+                        SizedBox(height: 24.h),
+
+                        // ─── Contact Information ──────────────────────
+                        _sectionHeader(Icons.contact_mail_outlined, 'Contact Information'),
+                        _buildLabel('Phone Number *'),
+                        _buildTextField(
+                          hint: 'Enter phone number',
+                          controller: _phoneController,
+                          icon: Icons.phone_outlined,
+                          keyboardType: TextInputType.phone,
+                        ),
+                        _buildLabel('Address'),
+                        _buildTextField(
+                          hint: 'Enter complete address',
+                          controller: _addressController,
+                          icon: Icons.location_on_outlined,
+                          maxLines: 2,
+                        ),
+
+                        SizedBox(height: 24.h),
+
+                        // ─── Professional Information ──────────────────
+                        _sectionHeader(Icons.work_outline_rounded, 'Professional Information'),
+                        _buildDateTile('Joining Date *', _joiningDateController),
+                        SizedBox(height: 12.h),
+                        Row(
+                          children: [
+                            Expanded(child: _buildDropdown(_selectedDepartment, _departments, (v) => setState(() => _selectedDepartment = v!))),
+                            SizedBox(width: 12.w),
+                            Expanded(child: _buildDropdown(_selectedDesignation, _designations, (v) => setState(() => _selectedDesignation = v!))),
+                          ],
+                        ),
+                        SizedBox(height: 12.h),
+                        Row(
+                          children: [
+                            Expanded(child: _buildDropdown(_selectedEmployeeType, _employeeTypes, (v) => setState(() => _selectedEmployeeType = v!))),
+                            SizedBox(width: 12.w),
+                            Expanded(
+                              child: _buildTextField(
+                                hint: 'Salary *',
+                                controller: _salaryController,
+                                icon: Icons.currency_rupee_rounded,
+                                keyboardType: TextInputType.number,
+                                hideShadow: true,
+                              ),
+                            ),
+                          ],
+                        ),
+                        SizedBox(height: 12.h),
+                        Row(
+                          children: [
+                            Expanded(child: _buildDropdown(_selectedStatus, _statuses, (v) => setState(() => _selectedStatus = v!))),
+                            SizedBox(width: 12.w),
+                            Expanded(child: _buildDropdown(_selectedGender, _genders, (v) => setState(() => _selectedGender = v!))),
+                          ],
+                        ),
+
+                        SizedBox(height: 24.h),
+
+                        // ─── Additional Information ──────────────────
+                        _sectionHeader(Icons.info_outline_rounded, 'Additional Information'),
+                        Row(
+                          children: [
+                            Expanded(child: _buildDropdown(_selectedBloodGroup, _bloodGroups, (v) => setState(() => _selectedBloodGroup = v!))),
+                            SizedBox(width: 12.w),
+                            Expanded(child: _buildDateTile('Date of Birth', _dobController, icon: Icons.cake_outlined)),
+                          ],
+                        ),
+                        _buildLabel('Emergency Contact Name'),
+                        _buildTextField(
+                          hint: 'Enter emergency contact person name',
+                          controller: _emergencyNameController,
+                          icon: Icons.person_outline,
+                        ),
+                        _buildLabel('Emergency Contact Number'),
+                        _buildTextField(
+                          hint: 'Enter emergency contact number',
+                          controller: _emergencyPhoneController,
+                          icon: Icons.phone_outlined,
+                          keyboardType: TextInputType.phone,
+                        ),
+
+                        SizedBox(height: 30.h),
                       ],
                     ),
                   ),
                 ),
               ),
-              SizedBox(width: 12.w),
-              Expanded(
-                child: _buildDropdownField(
-                  label: 'Status',
-                  value: _selectedStatus,
-                  items: _statuses,
-                  icon: Icons.circle_outlined,
-                  onChanged: (val) => setState(() => _selectedStatus = val!),
+              
+              // ─── Bottom Add Button ──────────────────────────
+              Container(
+                padding: EdgeInsets.all(20.r),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  boxShadow: [
+                    BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5)),
+                  ],
+                ),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: _saveEmployee,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: const Color(0xFF1E3A8A),
+                      foregroundColor: Colors.white,
+                      padding: EdgeInsets.symmetric(vertical: 16.h),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                      elevation: 0,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.person_add_rounded, size: 20.sp),
+                        SizedBox(width: 10.w),
+                        Text('Add Employee', style: GoogleFonts.poppins(fontSize: 16.sp, fontWeight: FontWeight.w600)),
+                      ],
+                    ),
+                  ),
                 ),
               ),
             ],
           ),
-        ],
-      ),
     );
   }
 
-  Widget _buildAdditionalInfoCard() {
-    return Container(
-      padding: EdgeInsets.all(16.r),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16.r),
-        border: Border.all(color: AppColors.border),
-        boxShadow: [
-          BoxShadow(
-            color: AppColors.shadow,
-            blurRadius: 8,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
+  Widget _sectionHeader(IconData icon, String title) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h, top: 8.h),
+      child: Row(
         children: [
-          _buildDropdownField(
-            label: 'Gender',
-            value: _selectedGender,
-            items: _genders,
-            icon: Icons.wc_rounded,
-            onChanged: (val) => setState(() => _selectedGender = val!),
-          ),
-          SizedBox(height: 12.h),
-          CustomTextField(
-            label: 'Leave Balance',
-            hint: 'Initial leave balance',
-            controller: TextEditingController(text: '12'),
-            prefixIcon: Icons.event_available_rounded,
-            readOnly: true,
+          Icon(icon, size: 18.sp, color: const Color(0xFF1E3A8A)),
+          SizedBox(width: 8.w),
+          Text(
+            title,
+            style: GoogleFonts.poppins(
+              fontSize: 15.sp,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF1E3A8A),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildDropdownField({
-    required String label,
-    required String value,
-    required List<String> items,
+  Widget _buildLabel(String text) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 6.h, top: 10.h),
+      child: Text(
+        text,
+        style: GoogleFonts.poppins(
+          fontSize: 13.sp,
+          fontWeight: FontWeight.w500,
+          color: const Color(0xFF475569),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTextField({
+    required String hint,
+    required TextEditingController controller,
     required IconData icon,
-    required Function(String?) onChanged,
+    bool obscure = false,
+    Widget? suffix,
+    int maxLines = 1,
+    TextInputType keyboardType = TextInputType.text,
     String? Function(String?)? validator,
+    bool hideShadow = false,
   }) {
     return Container(
-      padding: EdgeInsets.symmetric(horizontal: 14.w),
       decoration: BoxDecoration(
-        color: AppColors.surfaceVariant,
+        color: const Color(0xFFF8FAFC),
         borderRadius: BorderRadius.circular(12.r),
-        border: Border.all(color: AppColors.border),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
       ),
-      child: DropdownButtonFormField<String>(
-        value: value,
-        isExpanded: true,
+      child: TextFormField(
+        controller: controller,
+        obscureText: obscure,
+        maxLines: maxLines,
+        keyboardType: keyboardType,
+        validator: validator,
+        style: GoogleFonts.poppins(fontSize: 14.sp, color: const Color(0xFF1E293B)),
         decoration: InputDecoration(
-          labelText: label,
-          prefixIcon: Icon(icon, size: 20.sp, color: AppColors.primary),
+          hintText: hint,
+          hintStyle: GoogleFonts.poppins(fontSize: 13.sp, color: const Color(0xFF94A3B8)),
+          prefixIcon: Icon(icon, size: 18.sp, color: const Color(0xFF94A3B8)),
+          suffixIcon: suffix,
+          contentPadding: EdgeInsets.symmetric(horizontal: 16.w, vertical: 14.h),
           border: InputBorder.none,
-          labelStyle: GoogleFonts.poppins(
-            fontSize: 12.sp,
-            color: AppColors.textSecondary,
+          enabledBorder: InputBorder.none,
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12.r),
+            borderSide: const BorderSide(color: Color(0xFF1E3A8A), width: 1.5),
           ),
         ),
-        items: items.map((item) {
-          return DropdownMenuItem(
-            value: item,
-            child: Text(
-              item,
-              style: GoogleFonts.poppins(fontSize: 13.sp),
+      ),
+    );
+  }
+
+  Widget _buildDropdown(String value, List<String> items, Function(String?) onChanged) {
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12.w),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8FAFC),
+        borderRadius: BorderRadius.circular(12.r),
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: DropdownButtonHideUnderline(
+        child: DropdownButton<String>(
+          value: value,
+          isExpanded: true,
+          icon: Icon(Icons.keyboard_arrow_down_rounded, color: const Color(0xFF94A3B8), size: 20.sp),
+          style: GoogleFonts.poppins(fontSize: 14.sp, color: const Color(0xFF1E293B)),
+          items: items.map((String item) {
+            return DropdownMenuItem<String>(
+              value: item,
+              child: Text(item),
+            );
+          }).toList(),
+          onChanged: onChanged,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateTile(String label, TextEditingController controller, {IconData icon = Icons.calendar_today_rounded}) {
+    return GestureDetector(
+      onTap: () => _selectDate(controller),
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 14.h),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF8FAFC),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: const Color(0xFFE2E8F0)),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 18.sp, color: const Color(0xFF1E3A8A)),
+            SizedBox(width: 10.w),
+            Text(
+              controller.text.isEmpty ? label : controller.text,
+              style: GoogleFonts.poppins(
+                fontSize: 14.sp,
+                color: controller.text.isEmpty ? const Color(0xFF94A3B8) : const Color(0xFF1E293B),
+              ),
             ),
-          );
-        }).toList(),
-        onChanged: onChanged,
-        validator: validator,
-        dropdownColor: Colors.white,
-        style: GoogleFonts.poppins(fontSize: 13.sp),
+          ],
+        ),
       ),
     );
   }

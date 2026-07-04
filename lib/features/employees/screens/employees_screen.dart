@@ -42,7 +42,8 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
         ],
       ),
       floatingActionButton: FloatingActionButton.extended(
-        onPressed: () {},
+        heroTag: 'add_employee_fab',
+        onPressed: () => Navigator.pushNamed(context, '/add-employee'),
         backgroundColor: AppColors.primary,
         foregroundColor: Colors.white,
         elevation: 4,
