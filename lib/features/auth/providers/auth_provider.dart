@@ -15,6 +15,8 @@ class AuthUser {
   final String department;
   final String designation;
   final String avatarUrl;
+  final DateTime? joiningDate;
+  final bool isNoticePeriod;
 
   const AuthUser({
     required this.id,
@@ -24,6 +26,8 @@ class AuthUser {
     required this.department,
     this.designation = '',
     this.avatarUrl = '',
+    this.joiningDate,
+    this.isNoticePeriod = false,
   });
 }
 
@@ -77,6 +81,8 @@ class AuthProvider extends ChangeNotifier {
         department: savedDepartment ?? _currentUser!.department,
         designation: savedDesignation ?? _currentUser!.designation,
         avatarUrl: _currentUser!.avatarUrl,
+        joiningDate: _currentUser!.joiningDate,
+        isNoticePeriod: _currentUser!.isNoticePeriod,
       );
       notifyListeners();
     }
@@ -172,45 +178,55 @@ class AuthProvider extends ChangeNotifier {
 
   AuthUser? _getUserByEmail(String email) {
     final users = {
-      'admin@hrmis.com': const AuthUser(
+      'admin@hrmis.com': AuthUser(
         id: 'ADMIN001',
         name: 'Admin User',
         email: 'admin@hrmis.com',
         role: 'admin',
         department: 'Human Resources',
         designation: 'System Administrator',
+        joiningDate: DateTime(2020, 1, 1),
+        isNoticePeriod: false,
       ),
-      'user@hrmis.com': const AuthUser(
+      'user@hrmis.com': AuthUser(
         id: 'EMP001',
         name: 'Rahul Sharma',
         email: 'user@hrmis.com',
         role: 'employee',
         department: 'Engineering',
         designation: 'Senior Developer',
+        joiningDate: DateTime(DateTime.now().year, 1, 1), // Joined Jan 1st
+        isNoticePeriod: false,
       ),
-      'priya@techcorp.com': const AuthUser(
+      'priya@techcorp.com': AuthUser(
         id: 'EMP002',
         name: 'Priya Singh',
         email: 'priya@techcorp.com',
         role: 'employee',
         department: 'HR',
         designation: 'HR Manager',
+        joiningDate: DateTime(DateTime.now().year, 7, 1), // Joined July 1st (Pro-rata demo)
+        isNoticePeriod: true, // Demo: In Notice Period
       ),
-      'amit@techcorp.com': const AuthUser(
+      'amit@techcorp.com': AuthUser(
         id: 'EMP003',
         name: 'Amit Verma',
         email: 'amit@techcorp.com',
         role: 'employee',
         department: 'Finance',
         designation: 'Accounts Manager',
+        joiningDate: DateTime(2022, 3, 15),
+        isNoticePeriod: false,
       ),
-      'sneha@techcorp.com': const AuthUser(
+      'sneha@techcorp.com': AuthUser(
         id: 'EMP004',
         name: 'Sneha Patel',
         email: 'sneha@techcorp.com',
         role: 'employee',
         department: 'Design',
         designation: 'UI/UX Designer',
+        joiningDate: DateTime(2023, 5, 20),
+        isNoticePeriod: false,
       ),
     };
     return users[email];
@@ -232,6 +248,8 @@ class AuthProvider extends ChangeNotifier {
       department: department,
       designation: designation,
       avatarUrl: _currentUser!.avatarUrl,
+      joiningDate: _currentUser!.joiningDate,
+      isNoticePeriod: _currentUser!.isNoticePeriod,
     );
 
     final prefs = await SharedPreferences.getInstance();

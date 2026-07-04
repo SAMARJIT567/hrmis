@@ -9,6 +9,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
+import 'package:file_picker/file_picker.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
 import '../../../shared/widgets/loading_widget.dart';
@@ -56,6 +57,7 @@ class LeaveBalance {
 }
 
 class EmployeeLeaveProvider extends ChangeNotifier {
+  final AuthUser? user;
   List<EmployeeLeaveRequest> _requests = [];
   List<LeaveBalance> _balances = [
     const LeaveBalance(
@@ -121,8 +123,72 @@ class EmployeeLeaveProvider extends ChangeNotifier {
   int get rejectedCount => _requests.where((r) => r.status == 'rejected').length;
   int get totalLeaveBalance => _balances.fold(0, (sum, b) => sum + b.total);
 
-  EmployeeLeaveProvider() {
+  EmployeeLeaveProvider({this.user}) {
+    _calculateProRataBalances();
     loadLeaveRequests();
+  }
+
+  void _calculateProRataBalances() {
+    if (user == null || user!.joiningDate == null) return;
+
+    final joining = user!.joiningDate!;
+    final now = DateTime.now();
+
+    // 1. Casual Leave Pro-rata (Full allocation adjusted by joining month)
+    if (joining.year == now.year) {
+      int monthsLeft = 12 - joining.month + 1;
+      final clIndex = _balances.indexWhere((b) => b.type == 'Casual Leave');
+      if (clIndex != -1) {
+        _balances[clIndex] = LeaveBalance(
+          type: _balances[clIndex].type,
+          total: monthsLeft,
+          used: _balances[clIndex].used,
+          color: _balances[clIndex].color,
+          icon: _balances[clIndex].icon,
+        );
+      }
+    }
+
+    // 2. Sick Leave Accrual Logic (1 day per month since joining or start of year)
+    DateTime slAccrualStart = (joining.year == now.year) 
+        ? joining 
+        : DateTime(now.year, 1, 1);
+    
+    int slMonthsAccrued = now.month - slAccrualStart.month + 1;
+    if (slMonthsAccrued < 0) slMonthsAccrued = 0;
+
+    final slIndex = _balances.indexWhere((b) => b.type == 'Sick Leave');
+    if (slIndex != -1) {
+      final b = _balances[slIndex];
+      int totalAccrued = slMonthsAccrued > 30 ? 30 : slMonthsAccrued;
+      _balances[slIndex] = LeaveBalance(
+        type: b.type, total: totalAccrued, used: b.used, color: b.color, icon: b.icon,
+      );
+    }
+
+    // 3. Earned Leave Accrual Logic (1.5 days per month)
+    DateTime elAccrualStart = (joining.year == now.year) 
+        ? joining 
+        : DateTime(now.year, 1, 1);
+    
+    int elMonthsAccrued = now.month - elAccrualStart.month + 1;
+    if (elMonthsAccrued < 0) elMonthsAccrued = 0;
+    
+    double elTotal = elMonthsAccrued * 1.5;
+    // Max cap 60 days
+    if (elTotal > 60) elTotal = 60;
+
+    final elIndex = _balances.indexWhere((b) => b.type == 'Earned Leave');
+    if (elIndex != -1) {
+      final b = _balances[elIndex];
+      _balances[elIndex] = LeaveBalance(
+        type: b.type, 
+        total: elTotal.toInt(), 
+        used: b.used, 
+        color: b.color, 
+        icon: b.icon,
+      );
+    }
   }
 
   Future<void> loadLeaveRequests() async {
@@ -194,9 +260,10 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final authProvider = Provider.of<AuthProvider>(context);
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => EmployeeLeaveProvider()),
+        ChangeNotifierProvider(create: (_) => EmployeeLeaveProvider(user: authProvider.currentUser)),
       ],
       child: Builder(
         builder: (context) => Scaffold(
@@ -463,7 +530,14 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(request.leaveType, style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600)),
+              Expanded(
+                child: Text(
+                  request.leaveType, 
+                  style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              SizedBox(width: 8.w),
               Container(
                 padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
                 decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(12.r)),
@@ -472,7 +546,7 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
             ],
           ),
           SizedBox(height: 6.h),
-          Text('${request.fromDate} - ${request.toDate} (${request.days} day${request.days > 1 ? 's' : ''})', style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textSecondary)),
+          Text('${request.fromDate} - ${request.toDate} (${request.days % 1 == 0 ? request.days.toInt() : request.days} day${request.days > 1 ? 's' : ''})', style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textSecondary)),
           if (request.reason.isNotEmpty) ...[
             SizedBox(height: 4.h),
             Text(request.reason, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary)),
@@ -498,6 +572,121 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
   String? _selectedLeaveType;
   DateTime _fromDate = DateTime.now();
   DateTime _toDate = DateTime.now();
+  bool _isHalfDay = false;
+  String? _uploadedFileName;
+
+  double get _currentDays {
+    final from = DateTime(_fromDate.year, _fromDate.month, _fromDate.day);
+    final to = DateTime(_toDate.year, _toDate.month, _toDate.day);
+    return _isHalfDay ? 0.5 : (to.difference(from).inDays + 1).toDouble();
+  }
+
+  String? _validateCasualLeaveRules(DateTime from, DateTime to, List<EmployeeLeaveRequest> requests) {
+    if (_selectedLeaveType != 'Casual Leave') return null;
+    
+    // Normalize dates to remove time parts
+    final fromDateOnly = DateTime(from.year, from.month, from.day);
+    final toDateOnly = DateTime(to.year, to.month, to.day);
+    
+    final days = _isHalfDay ? 0.5 : (toDateOnly.difference(fromDateOnly).inDays + 1).toDouble();
+
+    debugPrint('Validating Casual Leave: $days days');
+
+    // 1. Max 3 continuous days
+    if (days > 3) {
+      return 'Casual Leave can only be applied for a maximum of 3 days. Please apply for Earned Leave for longer durations.';
+    }
+
+    // 2. Clubbing Restriction
+    final dayBefore = from.subtract(const Duration(days: 1));
+    final dayAfter = to.add(const Duration(days: 1));
+    final dateFormat = DateFormat('dd MMM yyyy');
+
+    for (var req in requests) {
+      if (req.status == 'approved' || req.status == 'pending') {
+        if (req.leaveType == 'Earned Leave' || req.leaveType == 'Sick Leave') {
+          try {
+            final reqFrom = dateFormat.parse(req.fromDate);
+            final reqTo = dateFormat.parse(req.toDate);
+
+            if (dateFormat.format(dayBefore) == dateFormat.format(reqTo) ||
+                dateFormat.format(dayAfter) == dateFormat.format(reqFrom)) {
+              return 'Casual Leave cannot be clubbed with ${req.leaveType}.';
+            }
+          } catch (_) {}
+        }
+      }
+    }
+    return null;
+  }
+
+  String? _validateSickLeaveRules(DateTime from, DateTime to, AuthUser? user) {
+    if (_selectedLeaveType != 'Sick Leave') return null;
+
+    // 1. Notice Period Restriction
+    // Using ?? false for extra safety against Null exceptions
+    if (user != null && (user.isNoticePeriod ?? false)) {
+      return 'Sick Leave is not allowed during the Notice Period unless there is a critical medical emergency. Please contact HR.';
+    }
+
+    // Note: Retroactive (past dates) are allowed for Sick Leave, 
+    // so we don't block them in the date picker or validation.
+    return null;
+  }
+
+  String? _validateEarnedLeaveRules(DateTime from, DateTime to, AuthUser? user) {
+    if (_selectedLeaveType != 'Earned Leave') return null;
+
+    final fromDateOnly = DateTime(from.year, from.month, from.day);
+    final toDateOnly = DateTime(to.year, to.month, to.day);
+    final today = DateTime(DateTime.now().year, DateTime.now().month, DateTime.now().day);
+    
+    final days = (toDateOnly.difference(fromDateOnly).inDays + 1).toDouble();
+
+    // 1. Minimum 3 days check
+    if (days < 3) {
+      return 'Earned Leave must be applied for a minimum of 3 days. For shorter durations, please use Casual Leave.';
+    }
+
+    // 2. No Same-Day / Emergency (Must be planned)
+    if (fromDateOnly.isAtSameMomentAs(today)) {
+      return 'Earned Leave cannot be applied for the same day. It must be planned and applied in advance.';
+    }
+    
+    if (fromDateOnly.isBefore(today)) {
+      return 'Earned Leave cannot be applied for past dates.';
+    }
+
+    // 3. Notice Period Restriction
+    if (user != null && (user.isNoticePeriod ?? false)) {
+      return 'Earned Leave is not allowed during the Notice Period. It will be settled during your Final Settlement (F&F).';
+    }
+
+    return null;
+  }
+
+  void _showPolicyAlert(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)),
+        title: Row(
+          children: [
+            Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28.sp),
+            SizedBox(width: 10.w),
+            Text('Policy Alert', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: AppColors.error)),
+          ],
+        ),
+        content: Text(message, style: GoogleFonts.poppins(fontSize: 14.sp)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.primary)),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   void dispose() {
@@ -519,14 +708,14 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
 
         return Container(
           constraints: BoxConstraints(
-            minHeight: MediaQuery.of(context).size.height * 0.6,
-            maxHeight: MediaQuery.of(context).size.height * 0.85,
+            minHeight: MediaQuery.of(context).size.height * 0.75,
+            maxHeight: MediaQuery.of(context).size.height * 0.95,
           ),
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
           ),
-          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, MediaQuery.of(context).viewInsets.bottom + 20.h),
+          padding: EdgeInsets.fromLTRB(20.w, 12.h, 20.w, MediaQuery.of(context).viewInsets.bottom + 30.h),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -589,6 +778,11 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                                     if (value != null) {
                                       setState(() {
                                         _selectedLeaveType = value;
+                                        // Reset half day if not CL or SL
+                                        // Earned Leave DOES NOT allow Half Day
+                                        if (_selectedLeaveType != 'Casual Leave' && _selectedLeaveType != 'Sick Leave') {
+                                          _isHalfDay = false;
+                                        }
                                       });
                                     }
                                   },
@@ -597,6 +791,32 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                             ),
                           ],
                         ),
+                        if (_selectedLeaveType == 'Casual Leave' || _selectedLeaveType == 'Sick Leave') ...[
+                          SizedBox(height: 12.h),
+                          Row(
+                            children: [
+                              SizedBox(
+                                height: 24.w,
+                                width: 24.w,
+                                child: Checkbox(
+                                  value: _isHalfDay,
+                                  activeColor: AppColors.primary,
+                                  onChanged: (val) {
+                                    setState(() {
+                                      _isHalfDay = val ?? false;
+                                      if (_isHalfDay) _toDate = _fromDate;
+                                    });
+                                  },
+                                ),
+                              ),
+                              SizedBox(width: 8.w),
+                              Text(
+                                'Half Day',
+                                style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w500, color: AppColors.textPrimary),
+                              ),
+                            ],
+                          ),
+                        ],
                         SizedBox(height: 16.h),
                         // From Date
                         GestureDetector(
@@ -604,7 +824,11 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                             final picked = await showDatePicker(
                               context: context,
                               initialDate: _fromDate,
-                              firstDate: DateTime.now(),
+                              // For Sick Leave, we allow past dates (Retroactive)
+                              // For others, we start from today
+                              firstDate: _selectedLeaveType == 'Sick Leave' 
+                                  ? DateTime.now().subtract(const Duration(days: 90)) 
+                                  : DateTime.now(),
                               lastDate: DateTime.now().add(const Duration(days: 365)),
                             );
                             if (picked != null) {
@@ -632,41 +856,126 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                         ),
                         SizedBox(height: 12.h),
                         // To Date
-                        GestureDetector(
-                          onTap: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: _toDate,
-                              firstDate: _fromDate,
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (picked != null) {
-                              setState(() {
-                                _toDate = picked;
-                              });
-                            }
-                          },
-                          child: Container(
-                            padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
-                            decoration: BoxDecoration(
-                              color: AppColors.surfaceVariant,
-                              borderRadius: BorderRadius.circular(12.r),
-                              border: Border.all(color: AppColors.border),
-                            ),
-                            child: Row(
-                              children: [
-                                Icon(Icons.calendar_today, size: 18.sp, color: AppColors.primary),
-                                SizedBox(width: 12.w),
-                                Text('To: ${DateFormat('dd MMM yyyy').format(_toDate)}', style: GoogleFonts.poppins(fontSize: 13.sp)),
-                              ],
+                        if (!_isHalfDay)
+                          GestureDetector(
+                            onTap: () async {
+                              final picked = await showDatePicker(
+                                context: context,
+                                initialDate: _toDate,
+                                firstDate: _fromDate,
+                                lastDate: DateTime.now().add(const Duration(days: 365)),
+                              );
+                              if (picked != null) {
+                                setState(() {
+                                  _toDate = picked;
+                                });
+                              }
+                            },
+                            child: Container(
+                              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+                              decoration: BoxDecoration(
+                                color: AppColors.surfaceVariant,
+                                borderRadius: BorderRadius.circular(12.r),
+                                border: Border.all(color: AppColors.border),
+                              ),
+                              child: Row(
+                                children: [
+                                  Icon(Icons.calendar_today, size: 18.sp, color: AppColors.primary),
+                                  SizedBox(width: 12.w),
+                                  Text('To: ${DateFormat('dd MMM yyyy').format(_toDate)}', style: GoogleFonts.poppins(fontSize: 13.sp)),
+                                ],
+                              ),
                             ),
                           ),
-                        ),
-                        SizedBox(height: 12.h),
+                        if (!_isHalfDay) SizedBox(height: 12.h),
+                        
+                        // Medical Certificate Upload (Sick Leave > 3 Days)
+                        if (_selectedLeaveType == 'Sick Leave' && _currentDays > 3) ...[
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Medical Certificate (Required for 3+ days)',
+                                style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+                              ),
+                              SizedBox(height: 6.h),
+                              GestureDetector(
+                                onTap: () async {
+                                  try {
+                                    FilePickerResult? result = await FilePicker.platform.pickFiles(
+                                      type: FileType.custom,
+                                      allowedExtensions: ['pdf'],
+                                    );
+
+                                    if (result != null) {
+                                      PlatformFile file = result.files.first;
+                                      
+                                      // Check size (5MB = 5 * 1024 * 1024 bytes)
+                                      if (file.size > 5 * 1024 * 1024) {
+                                        if (mounted) {
+                                          AppHelpers.showError(context, 'File size exceeds 5MB. Please upload a smaller PDF.');
+                                        }
+                                        return;
+                                      }
+
+                                      setState(() {
+                                        _uploadedFileName = file.name;
+                                      });
+                                      if (mounted) {
+                                        AppHelpers.showSuccess(context, 'PDF Selected: ${file.name}');
+                                      }
+                                    }
+                                  } catch (e) {
+                                    debugPrint('Error picking file: $e');
+                                    if (mounted) {
+                                      AppHelpers.showError(context, 'Error selecting file. Please try again.');
+                                    }
+                                  }
+                                },
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 14.h),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(12.r),
+                                    border: Border.all(
+                                      color: _uploadedFileName == null ? AppColors.error.withOpacity(0.5) : AppColors.success.withOpacity(0.5),
+                                      style: BorderStyle.solid,
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        _uploadedFileName == null ? Icons.picture_as_pdf_outlined : Icons.check_circle_rounded, 
+                                        size: 20.sp, 
+                                        color: _uploadedFileName == null ? AppColors.error : AppColors.success,
+                                      ),
+                                      SizedBox(width: 12.w),
+                                      Expanded(
+                                        child: Text(
+                                          _uploadedFileName ?? 'Upload Medical Certificate (PDF only, < 5MB)',
+                                          style: GoogleFonts.poppins(
+                                            fontSize: 13.sp, 
+                                            color: _uploadedFileName == null ? AppColors.textTertiary : AppColors.textPrimary,
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              SizedBox(height: 12.h),
+                            ],
+                          ),
+                        ],
+
                         // Reason
                         TextFormField(
                           controller: _reasonController,
                           maxLines: 3,
+                          textInputAction: TextInputAction.done,
                           decoration: InputDecoration(
                             hintText: 'Reason for leave',
                             filled: true,
@@ -680,36 +989,83 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                               borderRadius: BorderRadius.circular(12.r),
                               borderSide: BorderSide(color: AppColors.primary),
                             ),
+                            errorStyle: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.error),
                           ),
-                          validator: (value) => (value == null || value.isEmpty) ? 'Please enter reason' : null,
+                          validator: (value) => (value == null || value.trim().isEmpty) ? 'Please enter a valid reason' : null,
                         ),
                         SizedBox(height: 24.h),
                         // Submit Button
                         SizedBox(
                           width: double.infinity,
                           child: ElevatedButton(
-                            onPressed: (provider.isSubmitting || _selectedLeaveType == null) ? null : () async {
+                            onPressed: provider.isSubmitting ? null : () async {
+                              // Force focus out to ensure form state is updated
+                              FocusScope.of(context).unfocus();
+                              
+                              debugPrint('Submit Button Clicked - Type: $_selectedLeaveType, HalfDay: $_isHalfDay');
+                              
+                              if (_selectedLeaveType == null) {
+                                AppHelpers.showError(context, 'Please select a leave type');
+                                return;
+                              }
+
                               if (_formKey.currentState!.validate()) {
+                                // If half day is selected, toDate MUST be same as fromDate
+                                final effectiveToDate = _isHalfDay ? _fromDate : _toDate;
+
+                                // 1. Casual Leave Validations
+                                final clError = _validateCasualLeaveRules(_fromDate, effectiveToDate, provider.requests);
+                                if (clError != null) {
+                                  _showPolicyAlert(context, clError);
+                                  return;
+                                }
+
+                                // 2. Sick Leave Validations
+                                final slError = _validateSickLeaveRules(_fromDate, effectiveToDate, provider.user);
+                                if (slError != null) {
+                                  _showPolicyAlert(context, slError);
+                                  return;
+                                }
+
+                                // 3. Earned Leave Validations
+                                final elError = _validateEarnedLeaveRules(_fromDate, effectiveToDate, provider.user);
+                                if (elError != null) {
+                                  _showPolicyAlert(context, elError);
+                                  return;
+                                }
+
+                                // 4. Medical Certificate Check
+                                if (_selectedLeaveType == 'Sick Leave' && _currentDays > 3 && _uploadedFileName == null) {
+                                  _showPolicyAlert(context, 'A Medical Certificate is required for Sick Leave exceeding 3 days. Please upload a PDF file.');
+                                  return;
+                                }
+
+                                debugPrint('Applying $_selectedLeaveType for $_currentDays days');
                                 final success = await provider.applyLeave(
                                   leaveType: _selectedLeaveType!,
                                   fromDate: _fromDate,
-                                  toDate: _toDate,
+                                  toDate: effectiveToDate,
                                   reason: _reasonController.text.trim(),
+                                  customDays: _currentDays,
                                 );
+                                
                                 if (success && mounted) {
                                   Navigator.pop(context); // Close Bottom Sheet
-                                  AppHelpers.showSuccess(context, 'Leave applied successfully!');
+                                  AppHelpers.showSuccess(context, 'Leave request submitted successfully!');
                                 }
+                              } else {
+                                AppHelpers.showError(context, 'Please provide a reason for your leave.');
                               }
                             },
                             style: ElevatedButton.styleFrom(
                               backgroundColor: AppColors.primary,
                               padding: EdgeInsets.symmetric(vertical: 14.h),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                              elevation: 2,
                             ),
                             child: provider.isSubmitting
                                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                                : Text('Submit Request', style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600)),
+                                : Text('Submit Details', style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600)),
                           ),
                         ),
                       ],

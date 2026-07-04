@@ -359,11 +359,11 @@ class _LeaveCard extends StatelessWidget {
               children: [
                 Row(
                   children: [
-                    _detailItem(Icons.calendar_today_outlined, 'From', request.fromDate),
-                    SizedBox(width: 16.w),
-                    _detailItem(Icons.event_rounded, 'To', request.toDate),
-                    SizedBox(width: 16.w),
-                    _detailItem(Icons.timer_outlined, 'Days', '${request.days} Day${request.days > 1 ? 's' : ''}'),
+                    Expanded(child: _detailItem(Icons.calendar_today_outlined, 'From', request.fromDate)),
+                    SizedBox(width: 12.w),
+                    Expanded(child: _detailItem(Icons.event_rounded, 'To', request.toDate)),
+                    SizedBox(width: 12.w),
+                    Expanded(child: _detailItem(Icons.timer_outlined, 'Days', '${request.days % 1 == 0 ? request.days.toInt() : request.days} Day${request.days > 1 ? 's' : ''}')),
                   ],
                 ),
                 SizedBox(height: 8.h),

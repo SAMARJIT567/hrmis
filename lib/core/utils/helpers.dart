@@ -116,7 +116,7 @@ class AppHelpers {
         content: Row(children: [
           const Icon(Icons.check_circle, color: Colors.white, size: 18),
           const SizedBox(width: 8),
-          Text(message),
+          Expanded(child: Text(message)),
         ]),
         backgroundColor: AppColors.success,
         behavior: SnackBarBehavior.floating,
@@ -132,7 +132,7 @@ class AppHelpers {
         content: Row(children: [
           const Icon(Icons.error_outline, color: Colors.white, size: 18),
           const SizedBox(width: 8),
-          Text(message),
+          Expanded(child: Text(message)),
         ]),
         backgroundColor: AppColors.error,
         behavior: SnackBarBehavior.floating,
