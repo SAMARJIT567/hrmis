@@ -14,19 +14,34 @@ class LeaveProvider extends ChangeNotifier {
   String _filter = 'All';
 
   List<LeavePolicy> _policies = [
-    const LeavePolicy(id: 'CL', title: 'Casual Leave', description: 'Used for unplanned personal matters or short-term needs.', totalDays: 12, usedDays: 4, iconName: 'event_note_rounded', colorValue: 0xFF1E40AF),
-    const LeavePolicy(id: 'SL', title: 'Sick Leave', description: 'Used for health issues; requires certificate for 3+ days.', totalDays: 10, usedDays: 2, iconName: 'medical_services_outlined', colorValue: 0xFFEF4444),
-    const LeavePolicy(id: 'EL', title: 'Earned Leave', description: 'Earned leaves for planned vacations and long rests.', totalDays: 15, usedDays: 5, iconName: 'beach_access_rounded', colorValue: 0xFF10B981),
+    const LeavePolicy(id: 'CL', title: 'Casual Leave', description: 'Assam Govt: 12 days/year. No carry forward. Not a regular leave. Cannot be clubbed with EL/Medical. Sundays/Holidays in between are NOT counted.', totalDays: 12, usedDays: 4, iconName: 'event_note_rounded', colorValue: 0xFF1E40AF),
+    const LeavePolicy(id: 'COL', title: 'Commuted Leave', description: 'Medical ground leave with Full Pay. Note: 1 day Commuted Leave = 2 days HPL deduction. Medical certificate mandatory.', totalDays: 120, usedDays: 10, iconName: 'medical_services_outlined', colorValue: 0xFFEF4444),
+    const LeavePolicy(id: 'HPL', title: 'Half Pay Leave', description: 'Earned at 20 days/year. Provides Half Salary. Can be converted to Commuted Leave for Full Pay (2:1 ratio).', totalDays: 60, usedDays: 20, iconName: 'history_edu_rounded', colorValue: 0xFFF59E0B),
+    const LeavePolicy(id: 'EL', title: 'Earned Leave', description: 'Assam Govt Rules: 30 days/year (15+15 credit). Max 300 days accumulation. Sandwich rule applies. No clubbing with CL.', totalDays: 30, usedDays: 5, iconName: 'beach_access_rounded', colorValue: 0xFF10B981),
     const LeavePolicy(id: 'ML', title: 'Maternity Leave', description: 'Paid leave for expecting mothers (continuous block).', totalDays: 182, usedDays: 0, iconName: 'pregnant_woman_rounded', colorValue: 0xFF7C3AED),
     const LeavePolicy(id: 'PL', title: 'Paternity Leave', description: 'Granted to male employees around spouse delivery.', totalDays: 15, usedDays: 0, iconName: 'child_care_rounded', colorValue: 0xFF0EA5E9),
-    const LeavePolicy(id: 'CO', title: 'Compensatory Off', description: 'Credit for working on holidays or weekly off days.', totalDays: 5, usedDays: 1, iconName: 'celebration_rounded', colorValue: 0xFFF59E0B),
+    const LeavePolicy(id: 'CO', title: 'Compensatory Leave', description: 'Credit for working on holidays or weekly off days.', totalDays: 5, usedDays: 1, iconName: 'celebration_rounded', colorValue: 0xFFF59E0B),
     const LeavePolicy(id: 'BL', title: 'Bereavement Leave', description: 'Granted during a family tragedy or mourning.', totalDays: 5, usedDays: 0, iconName: 'heart_broken_rounded', colorValue: 0xFF475569),
+    const LeavePolicy(id: 'RH', title: 'Restricted Holiday', description: 'Assam Govt: 2 days/year. Optional holidays selected from a predefined list. Can be clubbed with CL.', totalDays: 2, usedDays: 0, iconName: 'festival_rounded', colorValue: 0xFFD946EF),
+  ];
+
+  final List<Map<String, String>> _restrictedHolidaysList = [
+    {'name': 'Ali-Aye-Ligang', 'date': '19 Feb 2025'},
+    {'name': 'Bizu Festival', 'date': '13 Apr 2025'},
+    {'name': 'Sati Sadhani Divas', 'date': '21 Apr 2025'},
+    {'name': 'Mahabir Jayanti', 'date': '10 Apr 2025'},
+    {'name': 'Tithi of Damodar Dev', 'date': '28 Apr 2025'},
+    {'name': 'Buddha Purnima', 'date': '12 May 2025'},
+    {'name': 'Death Anniv. of Madhab Dev', 'date': '12 Aug 2025'},
+    {'name': 'Karam Puja', 'date': '04 Sep 2025'},
+    {'name': 'Martyrdom Day of Guru Tegh Bahadur', 'date': '24 Nov 2025'},
   ];
 
   List<LeaveRequest> get requests => _filtered;
   bool get isLoading => _isLoading;
   String get currentFilter => _filter;
   List<LeavePolicy> get policies => _policies;
+  List<Map<String, String>> get restrictedHolidaysList => _restrictedHolidaysList;
 
   void updatePolicy(String id, int newTotal) {
     final idx = _policies.indexWhere((p) => p.id == id);

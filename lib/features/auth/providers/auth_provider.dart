@@ -17,6 +17,8 @@ class AuthUser {
   final String avatarUrl;
   final DateTime? joiningDate;
   final bool isNoticePeriod;
+  final String gender; // 'Male', 'Female', 'Other'
+  final int survivingChildren;
 
   const AuthUser({
     required this.id,
@@ -28,6 +30,8 @@ class AuthUser {
     this.avatarUrl = '',
     this.joiningDate,
     this.isNoticePeriod = false,
+    this.gender = 'Male',
+    this.survivingChildren = 0,
   });
 }
 
@@ -83,6 +87,8 @@ class AuthProvider extends ChangeNotifier {
         avatarUrl: _currentUser!.avatarUrl,
         joiningDate: _currentUser!.joiningDate,
         isNoticePeriod: _currentUser!.isNoticePeriod,
+        gender: (savedName != null) ? _currentUser!.gender : 'Male', // Safety check
+        survivingChildren: _currentUser!.survivingChildren,
       );
       notifyListeners();
     }
@@ -187,6 +193,8 @@ class AuthProvider extends ChangeNotifier {
         designation: 'System Administrator',
         joiningDate: DateTime(2020, 1, 1),
         isNoticePeriod: false,
+        gender: 'Male',
+        survivingChildren: 2,
       ),
       'user@hrmis.com': AuthUser(
         id: 'EMP001',
@@ -197,6 +205,8 @@ class AuthProvider extends ChangeNotifier {
         designation: 'Senior Developer',
         joiningDate: DateTime(DateTime.now().year, 1, 1), // Joined Jan 1st
         isNoticePeriod: false,
+        gender: 'Male',
+        survivingChildren: 1,
       ),
       'priya@techcorp.com': AuthUser(
         id: 'EMP002',
@@ -207,6 +217,8 @@ class AuthProvider extends ChangeNotifier {
         designation: 'HR Manager',
         joiningDate: DateTime(DateTime.now().year, 7, 1), // Joined July 1st (Pro-rata demo)
         isNoticePeriod: true, // Demo: In Notice Period
+        gender: 'Female',
+        survivingChildren: 0,
       ),
       'amit@techcorp.com': AuthUser(
         id: 'EMP003',
@@ -217,6 +229,8 @@ class AuthProvider extends ChangeNotifier {
         designation: 'Accounts Manager',
         joiningDate: DateTime(2022, 3, 15),
         isNoticePeriod: false,
+        gender: 'Male',
+        survivingChildren: 2,
       ),
       'sneha@techcorp.com': AuthUser(
         id: 'EMP004',
@@ -227,6 +241,8 @@ class AuthProvider extends ChangeNotifier {
         designation: 'UI/UX Designer',
         joiningDate: DateTime(2023, 5, 20),
         isNoticePeriod: false,
+        gender: 'Female',
+        survivingChildren: 1,
       ),
     };
     return users[email];
@@ -250,6 +266,8 @@ class AuthProvider extends ChangeNotifier {
       avatarUrl: _currentUser!.avatarUrl,
       joiningDate: _currentUser!.joiningDate,
       isNoticePeriod: _currentUser!.isNoticePeriod,
+      gender: _currentUser!.gender,
+      survivingChildren: _currentUser!.survivingChildren,
     );
 
     final prefs = await SharedPreferences.getInstance();
