@@ -12,6 +12,7 @@ import 'package:intl/intl.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
 import '../../../shared/widgets/loading_widget.dart';
+import '../../../core/providers/navigation_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/employee_attendance_provider.dart';
 import 'attendance_calendar_screen.dart';
@@ -174,12 +175,7 @@ class EmployeeAttendanceScreen extends StatelessWidget {
           Expanded(
             child: GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AttendanceCalendarScreen(),
-                  ),
-                );
+                context.read<NavigationProvider>().setIndex(1);
               },
               child: _quickActionCard(
                 icon: Icons.calendar_month_rounded,
@@ -194,12 +190,7 @@ class EmployeeAttendanceScreen extends StatelessWidget {
           Expanded(
             child: GestureDetector(
               onTap: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => EmployeeLeaveScreen(),
-                  ),
-                );
+                context.read<NavigationProvider>().setIndex(2);
               },
               child: _quickActionCard(
                 icon: Icons.event_note_rounded,

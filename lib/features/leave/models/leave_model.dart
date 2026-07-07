@@ -71,3 +71,41 @@ class LeavePolicy {
     );
   }
 }
+
+class CompOffCredit {
+  final String id;
+  final String employeeId;
+  final String employeeName;
+  final String dutyDate;
+  final String expiryDate;
+  final String reason;
+  final String status; // pending, approved, used, lapsed
+  final String attachment;
+  final String? duration;
+
+  const CompOffCredit({
+    required this.id,
+    required this.employeeId,
+    required this.employeeName,
+    required this.dutyDate,
+    required this.expiryDate,
+    required this.reason,
+    required this.status,
+    required this.attachment,
+    this.duration,
+  });
+
+  CompOffCredit copyWith({String? status}) {
+    return CompOffCredit(
+      id: id,
+      employeeId: employeeId,
+      employeeName: employeeName,
+      dutyDate: dutyDate,
+      expiryDate: expiryDate,
+      reason: reason,
+      status: status ?? this.status,
+      attachment: attachment,
+      duration: duration,
+    );
+  }
+}

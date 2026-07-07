@@ -18,6 +18,7 @@ import 'features/leave/providers/leave_provider.dart';
 import 'features/payroll/providers/payroll_provider.dart';
 import 'features/profile/providers/profile_provider.dart';
 import 'features/attendance/providers/office_settings_provider.dart';
+import 'core/providers/navigation_provider.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,7 @@ class HRMISApp extends StatelessWidget {
             ChangeNotifierProvider(create: (_) => PayrollProvider()),
             ChangeNotifierProvider(create: (_) => ProfileProvider()),
             ChangeNotifierProvider(create: (_) => OfficeSettingsProvider()),
+            ChangeNotifierProvider(create: (_) => NavigationProvider()),
           ],
           child: const AppRoot(),
         );

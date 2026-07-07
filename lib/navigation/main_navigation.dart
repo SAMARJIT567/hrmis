@@ -17,8 +17,8 @@ import '../features/attendance/screens/employee_attendance_screen.dart';
 import '../features/attendance/screens/attendance_calendar_screen.dart';
 import '../features/leave/screens/leave_screen.dart';
 import '../features/leave/screens/employee_leave_screen.dart';
-import '../features/payroll/screens/payroll_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
+import '../core/providers/navigation_provider.dart';
 
 class MainNavigation extends StatefulWidget {
   const MainNavigation({super.key});
@@ -28,8 +28,6 @@ class MainNavigation extends StatefulWidget {
 }
 
 class _MainNavigationState extends State<MainNavigation> {
-  int _currentIndex = 0;
-
   // For Admin
   late final List<Widget> _adminScreens;
   late final List<_NavItem> _adminNavItems;
@@ -48,7 +46,6 @@ class _MainNavigationState extends State<MainNavigation> {
       const EmployeesScreen(),
       const AttendanceScreen(),
       const LeaveScreen(),
-      const PayrollScreen(),
       const ProfileScreen(),
     ];
     _adminNavItems = const [
@@ -56,7 +53,6 @@ class _MainNavigationState extends State<MainNavigation> {
       _NavItem(icon: Icons.people_outline, activeIcon: Icons.people, label: 'Employees'),
       _NavItem(icon: Icons.access_time_outlined, activeIcon: Icons.access_time_filled, label: 'Attendance'),
       _NavItem(icon: Icons.event_note_outlined, activeIcon: Icons.event_note, label: 'Leave'),
-      _NavItem(icon: Icons.account_balance_wallet_outlined, activeIcon: Icons.account_balance_wallet, label: 'Payroll'),
       _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
     ];
 
@@ -78,30 +74,41 @@ class _MainNavigationState extends State<MainNavigation> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
+    final navProv = context.watch<NavigationProvider>();
     final isAdmin = auth.isAdmin;
+    
+    final navItems = isAdmin ? _adminNavItems : _employeeNavItems;
+    final screens = isAdmin ? _adminScreens : _employeeScreens;
+    
+    // Safety check: if currentIndex is out of bounds (e.g. after logout/login with different roles)
+    // reset it to 0 or clamp it.
+    int currentIndex = navProv.currentIndex;
+    if (currentIndex >= navItems.length) {
+      currentIndex = 0;
+      // We use addPostFrameCallback to avoid calling notifyListeners during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        navProv.setIndex(0);
+      });
+    }
 
     return PopScope(
-      canPop: _currentIndex == 0,
+      canPop: currentIndex == 0,
       onPopInvoked: (didPop) {
         if (didPop) return;
-        if (_currentIndex != 0) {
-          setState(() {
-            _currentIndex = 0;
-          });
+        if (currentIndex != 0) {
+          navProv.setIndex(0);
         }
       },
       child: Scaffold(
         body: IndexedStack(
-          index: _currentIndex,
-          children: isAdmin ? _adminScreens : _employeeScreens,
+          index: currentIndex,
+          children: screens,
         ),
         bottomNavigationBar: BottomNavigationBar(
           type: BottomNavigationBarType.fixed,
-          currentIndex: _currentIndex,
+          currentIndex: currentIndex,
           onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
+            navProv.setIndex(index);
           },
           backgroundColor: Colors.white,
           selectedItemColor: AppColors.primary,
@@ -109,7 +116,7 @@ class _MainNavigationState extends State<MainNavigation> {
           selectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500),
           unselectedLabelStyle: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w400),
           elevation: 8,
-          items: (isAdmin ? _adminNavItems : _employeeNavItems).map((item) {
+          items: navItems.map((item) {
             return BottomNavigationBarItem(
               icon: Icon(item.icon, size: 22.sp),
               activeIcon: Icon(item.activeIcon, size: 22.sp),

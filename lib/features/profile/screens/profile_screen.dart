@@ -17,6 +17,7 @@ import 'package:image_picker/image_picker.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
 import '../../../core/utils/helpers.dart';
+import '../../../core/providers/navigation_provider.dart';
 import '../../auth/providers/auth_provider.dart';
 import 'edit_profile_screen.dart';
 import '../providers/profile_provider.dart';
@@ -626,20 +627,97 @@ class _ProfileScreenState extends State<ProfileScreen> {
       onTap: () async {
         final confirm = await showDialog<bool>(
           context: context,
-          builder: (_) => AlertDialog(
-            title: const Text('Logout'),
-            content: const Text('Are you sure you want to logout?'),
+          builder: (ctx) => AlertDialog(
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20.r)),
+            backgroundColor: Colors.white,
+            surfaceTintColor: Colors.white,
+            contentPadding: EdgeInsets.fromLTRB(24.w, 20.h, 24.w, 10.h),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(16.r),
+                  decoration: BoxDecoration(
+                    color: AppColors.error.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(Icons.logout_rounded, color: AppColors.error, size: 30.sp),
+                ),
+                SizedBox(height: 20.h),
+                Text(
+                  'Confirm Logout',
+                  style: GoogleFonts.poppins(
+                    fontSize: 18.sp,
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textPrimary,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+                Text(
+                  'Are you sure you want to logout?\nYou will need to login again to access your account.',
+                  textAlign: TextAlign.center,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13.sp,
+                    color: AppColors.textSecondary,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ),
+            actionsPadding: EdgeInsets.fromLTRB(20.w, 10.h, 20.w, 20.h),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(backgroundColor: AppColors.error),
-                onPressed: () => Navigator.pop(context, true),
-                child: const Text('Logout'),
+              Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      onPressed: () => Navigator.pop(ctx, false),
+                      style: TextButton.styleFrom(
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                          side: BorderSide(color: AppColors.border),
+                        ),
+                      ),
+                      child: Text(
+                        'Cancel',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.pop(ctx, true),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.error,
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        padding: EdgeInsets.symmetric(vertical: 12.h),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12.r),
+                        ),
+                      ),
+                      child: Text(
+                        'Logout',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
         );
+
         if (confirm == true && context.mounted) {
+          context.read<NavigationProvider>().reset();
           await auth.logout();
           if (context.mounted) Navigator.pushNamedAndRemoveUntil(context, '/login', (_) => false);
         }
@@ -657,7 +735,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Icon(Icons.logout, color: AppColors.error, size: 20.sp),
             SizedBox(width: 8.w),
-            Text('Logout', style: TextStyle(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.error)),
+            Text('Logout', style: GoogleFonts.poppins(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.error)),
           ],
         ),
       ),
@@ -680,7 +758,7 @@ class _InfoChip extends StatelessWidget {
           SizedBox(height: 4.h),
           Text(
             value,
-            style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+            style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
             textAlign: TextAlign.center,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
@@ -688,7 +766,7 @@ class _InfoChip extends StatelessWidget {
           SizedBox(height: 2.h),
           Text(
             label,
-            style: TextStyle(fontSize: 10.sp, color: AppColors.textTertiary),
+            style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textTertiary),
             textAlign: TextAlign.center,
           ),
         ],

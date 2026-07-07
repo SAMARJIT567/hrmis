@@ -10,6 +10,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:intl/intl.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
 import '../../../shared/widgets/loading_widget.dart';
@@ -85,48 +86,19 @@ class LeaveBalance {
   });
 }
 
-class CompOffCredit {
-  final String id;
-  final String dutyDate;
-  final String expiryDate;
-  final String reason;
-  final String status; // pending, approved, used, lapsed
-  final String attachment;
-
-  const CompOffCredit({
-    required this.id,
-    required this.dutyDate,
-    required this.expiryDate,
-    required this.reason,
-    required this.status,
-    required this.attachment,
-  });
-
-  CompOffCredit copyWith({String? status}) {
-    return CompOffCredit(
-      id: id,
-      dutyDate: dutyDate,
-      expiryDate: expiryDate,
-      reason: reason,
-      status: status ?? this.status,
-      attachment: attachment,
-    );
-  }
-}
-
 // ─── STATE MANAGEMENT ────────────────────────────────────────
 
 class EmployeeLeaveProvider extends ChangeNotifier {
   final AuthUser? user;
   List<EmployeeLeaveRequest> _requests = [];
-  List<CompOffCredit> _compOffCredits = [];
+  List<CompOffCredit> _globalCompOffReports = [];
   List<LeavePolicy> _globalPolicies = [];
   
   bool _isLoading = false;
   bool _isSubmitting = false;
 
   List<EmployeeLeaveRequest> get requests => _requests;
-  List<CompOffCredit> get compOffCredits => _compOffCredits;
+  List<CompOffCredit> get compOffCredits => _globalCompOffReports.where((r) => r.employeeId == user?.id).toList();
   bool get isLoading => _isLoading;
   bool get isSubmitting => _isSubmitting;
 
@@ -136,14 +108,15 @@ class EmployeeLeaveProvider extends ChangeNotifier {
   }
 
   List<LeaveBalance> get balances {
-    if (_globalPolicies.isEmpty) return [];
+    final List<LeavePolicy> policiesToUse = _globalPolicies.isNotEmpty 
+        ? _globalPolicies 
+        : LeaveProvider().policies;
 
-    return _globalPolicies.map((policy) {
+    return policiesToUse.map((policy) {
       int total = policy.totalDays;
 
-      // Compensatory Leave logic
       if (policy.id == 'CO') {
-        total = _compOffCredits.where((c) => c.status == 'approved').length;
+        total = policy.totalDays + compOffCredits.where((c) => c.status == 'approved').length;
       }
 
       return LeaveBalance(
@@ -170,8 +143,46 @@ class EmployeeLeaveProvider extends ChangeNotifier {
   int get approvedCount => _requests.where((r) => r.status == 'approved').length;
   int get rejectedCount => _requests.where((r) => r.status == 'rejected').length;
 
-  EmployeeLeaveProvider({this.user}) {
-    loadLeaveRequests();
+  bool get isCompOffLimitReached => compOffReportsThisMonth >= 2;
+
+  int get compOffReportsThisMonth {
+    final now = DateTime.now();
+    final currentMonth = DateFormat('MMM').format(now);
+    final currentYear = DateFormat('yyyy').format(now);
+    
+    int count = 0;
+    for (var credit in compOffCredits) {
+      if (credit.dutyDate.contains(currentMonth) && credit.dutyDate.contains(currentYear)) {
+        count++;
+      }
+    }
+    return count;
+  }
+
+  EmployeeLeaveProvider({this.user});
+
+  void syncWithGlobal(LeaveProvider globalProvider) {
+    if (user == null) return;
+    
+    _requests = globalProvider.allRequests
+        .where((r) => r.employeeId == user!.id)
+        .map((r) => EmployeeLeaveRequest(
+              id: r.id,
+              leaveType: r.leaveType,
+              fromDate: r.fromDate,
+              toDate: r.toDate,
+              days: r.days,
+              reason: r.reason,
+              status: r.status,
+              appliedOn: r.appliedOn,
+            ))
+        .toList();
+    
+    _globalCompOffReports = globalProvider.compOffReports;
+    _globalPolicies = globalProvider.policies;
+    
+    _isLoading = false;
+    notifyListeners();
   }
 
   bool isSecondOrFourthSaturday(DateTime date) {
@@ -191,43 +202,50 @@ class EmployeeLeaveProvider extends ChangeNotifier {
     return count.toDouble();
   }
 
-  void updatePolicy(String id, int newTotal) {
-    // This is handled by globalPolicies update now
-  }
-
-  Future<void> loadLeaveRequests() async {
-    _isLoading = true;
-    notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 500));
-    _requests = [];
-    _isLoading = false;
-    notifyListeners();
-  }
-
-  Future<bool> applyLeave({required String leaveType, required DateTime fromDate, required DateTime toDate, required String reason, double? customDays}) async {
+  Future<bool> applyLeave({
+    required String leaveType, 
+    required DateTime fromDate, 
+    required DateTime toDate, 
+    required String reason, 
+    double? customDays,
+    required LeaveProvider globalProvider,
+  }) async {
     _isSubmitting = true;
     notifyListeners();
     await Future.delayed(const Duration(seconds: 1));
 
     final days = customDays ?? (toDate.difference(fromDate).inDays + 1).toDouble();
-    final newRequest = EmployeeLeaveRequest(
-      id: DateTime.now().millisecondsSinceEpoch.toString(),
+    final requestId = DateTime.now().millisecondsSinceEpoch.toString();
+    final appliedOn = DateFormat('dd MMM yyyy').format(DateTime.now());
+
+    final newGlobalRequest = LeaveRequest(
+      id: requestId,
+      employeeId: user?.id ?? 'EMP001',
+      employeeName: user?.name ?? 'Rahul Sharma',
+      department: user?.department ?? 'Engineering',
       leaveType: leaveType,
       fromDate: DateFormat('dd MMM yyyy').format(fromDate),
       toDate: DateFormat('dd MMM yyyy').format(toDate),
       days: days,
       reason: reason,
       status: 'pending',
-      appliedOn: DateFormat('dd MMM yyyy').format(DateTime.now()),
+      appliedOn: appliedOn,
     );
 
-    _requests.insert(0, newRequest);
+    await globalProvider.addLeaveRequest(newGlobalRequest);
+    
     _isSubmitting = false;
     notifyListeners();
     return true;
   }
 
-  Future<bool> logHolidayDuty({required DateTime dutyDate, required String reason, required String attachment}) async {
+  Future<bool> logHolidayDuty({
+    required DateTime dutyDate, 
+    required String reason, 
+    required String attachment, 
+    String? duration,
+    required LeaveProvider globalProvider,
+  }) async {
     _isSubmitting = true;
     notifyListeners();
     await Future.delayed(const Duration(seconds: 1));
@@ -235,14 +253,18 @@ class EmployeeLeaveProvider extends ChangeNotifier {
     final expiryDate = dutyDate.add(const Duration(days: 30));
     final newCredit = CompOffCredit(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
+      employeeId: user?.id ?? 'EMP001',
+      employeeName: user?.name ?? 'Rahul Sharma',
       dutyDate: DateFormat('dd MMM yyyy').format(dutyDate),
       expiryDate: DateFormat('dd MMM yyyy').format(expiryDate),
       reason: reason,
-      status: 'approved',
+      status: 'pending',
       attachment: attachment,
+      duration: duration,
     );
 
-    _compOffCredits.insert(0, newCredit);
+    await globalProvider.addCompOffReport(newCredit);
+    
     _isSubmitting = false;
     notifyListeners();
     return true;
@@ -253,6 +275,7 @@ class EmployeeLeaveProvider extends ChangeNotifier {
     notifyListeners();
     await Future.delayed(const Duration(seconds: 1));
 
+    // Closing locally is just for UI feedback
     final index = _requests.indexWhere((r) => r.id == requestId);
     if (index != -1) {
       _requests[index] = _requests[index].copyWith(
@@ -287,7 +310,7 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
         ChangeNotifierProxyProvider<LeaveProvider, EmployeeLeaveProvider>(
           create: (context) => EmployeeLeaveProvider(user: authProvider.currentUser),
           update: (context, leaveProv, employeeLeaveProv) {
-            employeeLeaveProv!.updateGlobalPolicies(leaveProv.policies);
+            employeeLeaveProv!.syncWithGlobal(leaveProv);
             return employeeLeaveProv;
           },
         ),
@@ -295,28 +318,89 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
       child: Builder(
         builder: (context) => Scaffold(
           backgroundColor: AppColors.background,
-          appBar: AppBar(
-            title: Text('Leave Management', style: GoogleFonts.poppins(fontSize: 18.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
-            backgroundColor: Colors.white,
-            elevation: 0,
-            leading: Navigator.canPop(context) ? IconButton(icon: const Icon(Icons.arrow_back_ios_new_rounded, color: AppColors.primary), onPressed: () => Navigator.pop(context)) : null,
-          ),
-          body: ListView(
-            physics: const BouncingScrollPhysics(),
-            padding: EdgeInsets.symmetric(horizontal: 16.r, vertical: 10.r),
+          body: Column(
             children: [
-              _buildLeaveBalanceCard(),
-              _buildStatsRow(),
-              _buildActionButtons(context),
-              _buildHistoryTitle(),
-              _buildLeaveHistory(context),
-              SizedBox(height: 30.h),
+              _buildHeader(context),
+              Expanded(
+                child: ListView(
+                  physics: const BouncingScrollPhysics(),
+                  padding: EdgeInsets.symmetric(horizontal: 16.r, vertical: 10.r),
+                  children: [
+                    _buildLeaveBalanceCard(),
+                    _buildStatsRow(),
+                    _buildActionButtons(context),
+                    _buildHistoryTitle(),
+                    _buildLeaveHistory(context),
+                    SizedBox(height: 100.h),
+                  ],
+                ),
+              ),
             ],
           ),
         ),
       ),
     );
   }
+
+  Widget _buildHeader(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.fromLTRB(20.w, MediaQuery.of(context).padding.top + 15.h, 20.w, 20.h),
+      decoration: const BoxDecoration(
+        gradient: AppColors.headerGradient,
+      ),
+      child: Row(
+        children: [
+          if (Navigator.canPop(context)) ...[
+            GestureDetector(
+              onTap: () => Navigator.pop(context),
+              child: Container(
+                padding: EdgeInsets.all(8.r),
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.15),
+                  borderRadius: BorderRadius.circular(10.r),
+                ),
+                child: Icon(Icons.arrow_back_ios_new_rounded, color: Colors.white, size: 18.sp),
+              ),
+            ),
+            SizedBox(width: 15.w),
+          ],
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Leave Management',
+                  style: GoogleFonts.poppins(
+                    fontSize: 22.sp,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white,
+                  ),
+                ),
+                Text(
+                  'Apply and track your leaves',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
+                    color: Colors.white.withOpacity(0.75),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _headerIconBtn(Icons.help_outline_rounded),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerIconBtn(IconData icon) => Container(
+    width: 38.w,
+    height: 38.h,
+    decoration: BoxDecoration(
+      color: Colors.white.withOpacity(0.15),
+      borderRadius: BorderRadius.circular(10.r),
+    ),
+    child: Icon(icon, color: Colors.white, size: 19.sp),
+  );
 
   Widget _buildLeaveBalanceCard() {
     return Consumer<EmployeeLeaveProvider>(
@@ -469,9 +553,91 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
     return Consumer<EmployeeLeaveProvider>(
       builder: (_, provider, __) {
         if (provider.isLoading) return const Center(child: InlineLoader());
-        if (provider.requests.isEmpty) return const EmptyStateWidget(icon: Icons.event_busy_rounded, title: 'No Leave Requests', subtitle: 'Your leave history will appear here.');
-        return Column(children: provider.requests.map((request) => _buildHistoryCard(context, request, provider)).toList());
+        
+        final allItems = [
+          ...provider.requests,
+          ...provider.compOffCredits,
+        ];
+
+        // Sort by timestamp (id) descending
+        allItems.sort((a, b) {
+          String idA = (a is EmployeeLeaveRequest) ? a.id : (a as CompOffCredit).id;
+          String idB = (b is EmployeeLeaveRequest) ? b.id : (b as CompOffCredit).id;
+          return idB.compareTo(idA);
+        });
+
+        if (allItems.isEmpty) return const EmptyStateWidget(icon: Icons.event_busy_rounded, title: 'No History', subtitle: 'Your leave history and duty reports will appear here.');
+        
+        return Column(
+          children: allItems.map((item) {
+            if (item is EmployeeLeaveRequest) {
+              return _buildHistoryCard(context, item, provider);
+            } else {
+              return _buildDutyReportHistoryCard(context, item as CompOffCredit, provider);
+            }
+          }).toList()
+        );
       },
+    );
+  }
+
+  Widget _buildDutyReportHistoryCard(BuildContext context, CompOffCredit report, EmployeeLeaveProvider provider) {
+    final statusColor = report.status == 'approved' ? AppColors.success : report.status == 'pending' ? AppColors.warning : AppColors.error;
+    final statusBg = report.status == 'approved' ? AppColors.successLight : report.status == 'pending' ? AppColors.warningLight : AppColors.errorLight;
+
+    return Container(
+      margin: EdgeInsets.only(bottom: 10.h),
+      padding: EdgeInsets.all(14.r),
+      decoration: BoxDecoration(
+        color: Colors.orange.withOpacity(0.02), 
+        borderRadius: BorderRadius.circular(12.r), 
+        border: Border.all(color: Colors.orange.withOpacity(0.2))
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(child: Text('HOLIDAY DUTY REPORT', style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.orange[800]))),
+              Container(padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h), decoration: BoxDecoration(color: statusBg, borderRadius: BorderRadius.circular(12.r)), child: Text(report.status.toUpperCase(), style: GoogleFonts.poppins(fontSize: 9.sp, fontWeight: FontWeight.w600, color: statusColor))),
+            ],
+          ),
+          SizedBox(height: 8.h),
+          Text('Duty Date: ${report.dutyDate}', style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w600)),
+          Text('Duration: ${report.duration ?? "N/A"}', style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textSecondary)),
+          if (report.reason.isNotEmpty) Padding(padding: EdgeInsets.only(top: 4.h), child: Text(report.reason, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          SizedBox(height: 12.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Icon(Icons.picture_as_pdf_rounded, size: 14.sp, color: AppColors.error),
+                    SizedBox(width: 4.w),
+                    Expanded(child: Text(report.attachment, style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textHint), maxLines: 1, overflow: TextOverflow.ellipsis)),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final url = Uri.parse('https://www.w3.org/WAI/ER/tests/xhtml/testfiles/resources/pdf/dummy.pdf');
+                  if (await canLaunchUrl(url)) {
+                    await launchUrl(url, mode: LaunchMode.externalApplication);
+                  } else {
+                    if (context.mounted) {
+                      AppHelpers.showError(context, 'Could not open PDF viewer');
+                    }
+                  }
+                },
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: Size(0, 0), tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+                child: Text('View File', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600, color: AppColors.primary)),
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 
@@ -503,20 +669,44 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
           ),
           SizedBox(height: 6.h),
           Text('${request.fromDate} - ${request.toDate} (${request.days % 1 == 0 ? request.days.toInt() : request.days} day${request.days > 1 ? 's' : ''})', style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textSecondary)),
-          if (request.reason.isNotEmpty) Padding(padding: EdgeInsets.only(top: 4.h), child: Text(request.reason, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary))),
-          SizedBox(height: 8.h),
+          if (request.reason.isNotEmpty) Padding(padding: EdgeInsets.only(top: 4.h), child: Text(request.reason, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary), maxLines: 1, overflow: TextOverflow.ellipsis)),
+          SizedBox(height: 10.h),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Applied on: ${request.appliedOn}', style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textHint)),
+              Text('Applied on: ${request.appliedOn}', style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textHint)),
               if (needsJoiningReport)
                 ElevatedButton(
                   onPressed: () => showModalBottomSheet(context: context, isScrollControlled: true, backgroundColor: Colors.transparent, builder: (ctx) => ChangeNotifierProvider.value(value: provider, child: JoiningReportSheet(request: request))),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(horizontal: 12.w), minimumSize: Size(0, 28.h), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r))),
-                  child: Text('Submit Joining', style: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600)),
+                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.secondary, foregroundColor: Colors.white, padding: EdgeInsets.symmetric(horizontal: 12.w), minimumSize: Size(0, 26.h), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8.r))),
+                  child: Text('Submit Joining', style: GoogleFonts.poppins(fontSize: 9.sp, fontWeight: FontWeight.w600)),
                 ),
               if (request.status == 'closed') Row(children: [Icon(Icons.check_circle_outline_rounded, color: Colors.blueGrey, size: 14.sp), SizedBox(width: 4.w), Text('Joined on: ${request.joiningDate}', style: GoogleFonts.poppins(fontSize: 10.sp, color: Colors.blueGrey, fontWeight: FontWeight.w500))]),
             ],
+          ),
+          SizedBox(height: 12.h),
+          Center(
+            child: SizedBox(
+              width: 140.w,
+              child: TextButton.icon(
+                onPressed: () => showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (ctx) => _EmployeeLeaveDetailsSheet(request: request),
+                ),
+                icon: Icon(Icons.remove_red_eye_outlined, size: 14.sp, color: AppColors.primary),
+                label: Text('View Details', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600, color: AppColors.primary)),
+                style: TextButton.styleFrom(
+                  backgroundColor: AppColors.primary.withOpacity(0.08),
+                  padding: EdgeInsets.symmetric(vertical: 6.h),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10.r),
+                    side: BorderSide(color: AppColors.primary.withOpacity(0.2)),
+                  ),
+                ),
+              ),
+            ),
           ),
         ],
       ),
@@ -571,8 +761,24 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
     return null;
   }
 
-  String? _validateHalfPayLeaveRules(DateTime from, DateTime to, AuthUser? user, List<LeaveBalance> balances) {
+  String? _validateHalfPayLeaveRules(DateTime from, DateTime to, AuthUser? user, List<LeaveBalance> balances, List<EmployeeLeaveRequest> requests) {
     if (_selectedLeaveType != 'Half Pay Leave') return null;
+    
+    // Check for adjacent Casual Leave
+    final dateFormat = DateFormat('dd MMM yyyy');
+    for (var req in requests) {
+      if ((req.status == 'approved' || req.status == 'pending') && req.leaveType == 'Casual Leave') {
+        try {
+          final reqFrom = dateFormat.parse(req.fromDate);
+          final reqTo = dateFormat.parse(req.toDate);
+          if (dateFormat.format(from.subtract(const Duration(days: 1))) == dateFormat.format(reqTo) || 
+              dateFormat.format(to.add(const Duration(days: 1))) == dateFormat.format(reqFrom)) {
+            return 'Regular Leave (HPL) cannot be taken just before or after Casual Leave (CL).';
+          }
+        } catch (_) {}
+      }
+    }
+
     final days = (to.difference(from).inDays + 1).toDouble();
     final hplBalance = balances.firstWhere((b) => b.type == 'Half Pay Leave');
     if (hplBalance.remaining < days) return 'Insufficient Half Pay Leave (HPL) balance.';
@@ -581,6 +787,22 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
 
   String? _validateCommutedLeaveRules(DateTime from, DateTime to, AuthUser? user, List<LeaveBalance> balances, List<EmployeeLeaveRequest> requests) {
     if (_selectedLeaveType != 'Commuted Leave') return null;
+
+    // Check for adjacent Casual Leave
+    final dateFormat = DateFormat('dd MMM yyyy');
+    for (var req in requests) {
+      if ((req.status == 'approved' || req.status == 'pending') && req.leaveType == 'Casual Leave') {
+        try {
+          final reqFrom = dateFormat.parse(req.fromDate);
+          final reqTo = dateFormat.parse(req.toDate);
+          if (dateFormat.format(from.subtract(const Duration(days: 1))) == dateFormat.format(reqTo) || 
+              dateFormat.format(to.add(const Duration(days: 1))) == dateFormat.format(reqFrom)) {
+            return 'Commuted Leave cannot be taken just before or after Casual Leave (CL).';
+          }
+        } catch (_) {}
+      }
+    }
+
     final days = (to.difference(from).inDays + 1).toDouble();
     final hplBalance = balances.firstWhere((b) => b.type == 'Half Pay Leave');
     if (hplBalance.remaining < (days * 2)) return 'Insufficient HPL balance (Needs 2 HPL for 1 Commuted Day).';
@@ -617,12 +839,62 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
 
   String? _validateEarnedLeaveRules(DateTime from, DateTime to, AuthUser? user, List<EmployeeLeaveRequest> requests) {
     if (_selectedLeaveType != 'Earned Leave') return null;
+    
+    // Check for adjacent Casual Leave
+    final dateFormat = DateFormat('dd MMM yyyy');
+    for (var req in requests) {
+      if ((req.status == 'approved' || req.status == 'pending') && req.leaveType == 'Casual Leave') {
+        try {
+          final reqFrom = dateFormat.parse(req.fromDate);
+          final reqTo = dateFormat.parse(req.toDate);
+          if (dateFormat.format(from.subtract(const Duration(days: 1))) == dateFormat.format(reqTo) || 
+              dateFormat.format(to.add(const Duration(days: 1))) == dateFormat.format(reqFrom)) {
+            return 'Earned Leave (EL) cannot be taken just before or after Casual Leave (CL).';
+          }
+        } catch (_) {}
+      }
+    }
+
     if (from.isBefore(DateTime.now().add(const Duration(days: 15)))) return 'Apply for EL at least 15 days in advance.';
     return null;
   }
 
+  String? _validateActiveLeave(DateTime newFrom, DateTime newTo, List<EmployeeLeaveRequest> requests) {
+    final dateFormat = DateFormat('dd MMM yyyy');
+    
+    // Normalize new dates (remove time)
+    final nFrom = DateTime(newFrom.year, newFrom.month, newFrom.day);
+    final nTo = DateTime(newTo.year, newTo.month, newTo.day);
+
+    for (var req in requests) {
+      if (req.status == 'pending' || req.status == 'approved') {
+        try {
+          final existingFrom = dateFormat.parse(req.fromDate);
+          final existingTo = dateFormat.parse(req.toDate);
+          
+          final eFrom = DateTime(existingFrom.year, existingFrom.month, existingFrom.day);
+          final eTo = DateTime(existingTo.year, existingTo.month, existingTo.day);
+
+          // Overlap check: (StartA <= EndB) and (EndA >= StartB)
+          if (!(nTo.isBefore(eFrom) || nFrom.isAfter(eTo))) {
+            return 'Overlap Error: You already have a leave applied from ${req.fromDate} to ${req.toDate}. Please choose different dates.';
+          }
+        } catch (_) {}
+      }
+    }
+    return null;
+  }
+
   void _showPolicyAlert(BuildContext context, String message) {
-    showDialog(context: context, builder: (ctx) => AlertDialog(shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)), title: Row(children: [Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28.sp), SizedBox(width: 10.w), Text('Policy Alert', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: AppColors.error))]), content: Text(message, style: GoogleFonts.poppins(fontSize: 14.sp)), actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.primary)))]));
+    showDialog(
+      context: context, 
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16.r)), 
+        title: Row(children: [Icon(Icons.warning_amber_rounded, color: AppColors.error, size: 28.sp), SizedBox(width: 10.w), Text('Policy Alert', style: GoogleFonts.poppins(fontWeight: FontWeight.w700, color: AppColors.error))]), 
+        content: Text(message, style: GoogleFonts.poppins(fontSize: 14.sp)), 
+        actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: Text('OK', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: AppColors.primary)))]
+      )
+    );
   }
 
   @override
@@ -661,12 +933,34 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                   if (_selectedLeaveType == 'Maternity Leave') _buildMiscarriageToggle(),
                   if (_selectedLeaveType == 'Paternity Leave') _buildDeliveryDatePicker(),
                   if (_selectedLeaveType == 'Compensatory Leave') _buildLogDutyButton(provider),
-                  if (_selectedLeaveType != 'Paternity Leave') _buildDatePickers(),
-                  _buildUploadSection(),
-                  _buildDurationDisplay(provider),
-                  _buildReasonField(),
-                  SizedBox(height: 24.h),
-                  _buildSubmitButton(provider),
+                  Builder(
+                    builder: (context) {
+                      final hasPending = provider.compOffCredits.any((c) => c.status == 'pending');
+                      final hasApproved = provider.compOffCredits.any((c) => c.status == 'approved');
+                      bool isStep2Enabled = true;
+                      
+                      if (_selectedLeaveType == 'Compensatory Leave') {
+                        isStep2Enabled = hasApproved && !hasPending;
+                      }
+
+                      return IgnorePointer(
+                        ignoring: !isStep2Enabled,
+                        child: Opacity(
+                          opacity: isStep2Enabled ? 1.0 : 0.5,
+                          child: Column(
+                            children: [
+                              if (_selectedLeaveType != 'Paternity Leave') _buildDatePickers(),
+                              _buildUploadSection(),
+                              _buildDurationDisplay(provider),
+                              _buildReasonField(),
+                              SizedBox(height: 24.h),
+                              _buildSubmitButton(provider, globalLeaveProvider, isEnabled: isStep2Enabled),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ],
               ),
             ),
@@ -762,12 +1056,81 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
 
   Widget _buildLogDutyButton(EmployeeLeaveProvider provider) {
     final approvedCredits = provider.compOffCredits.where((c) => c.status == 'approved').toList();
+    final pendingCredits = provider.compOffCredits.where((c) => c.status == 'pending').toList();
+    final isLimitReached = provider.isCompOffLimitReached;
+    final reportsDone = provider.compOffReportsThisMonth;
+    final reportsRemaining = 2 - reportsDone;
     
     return Padding(
       padding: EdgeInsets.only(top: 16.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (pendingCredits.isNotEmpty) ...[
+            Text(
+              'Pending for Review',
+              style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w700, color: Colors.orange[800]),
+            ),
+            SizedBox(height: 8.h),
+            ...pendingCredits.map((c) => Container(
+              margin: EdgeInsets.only(bottom: 8.h),
+              padding: EdgeInsets.all(12.r),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.orange.withOpacity(0.3)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(6.r),
+                    decoration: BoxDecoration(color: Colors.orange.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(Icons.hourglass_top_rounded, color: Colors.orange[800], size: 14.sp),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Duty: ${c.dutyDate}', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600)),
+                        Text('Waiting for admin review...', style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textSecondary, fontStyle: FontStyle.italic)),
+                      ],
+                    ),
+                  ),
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 2.h),
+                    decoration: BoxDecoration(color: Colors.orange[100], borderRadius: BorderRadius.circular(8.r)),
+                    child: Text('PENDING', style: GoogleFonts.poppins(fontSize: 8.sp, fontWeight: FontWeight.w700, color: Colors.orange[900])),
+                  ),
+                ],
+              ),
+            )).toList(),
+            Container(
+              margin: EdgeInsets.only(bottom: 16.h),
+              padding: EdgeInsets.all(10.r),
+              decoration: BoxDecoration(
+                color: Colors.orange.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: Colors.orange.withOpacity(0.5)),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.info_rounded, color: Colors.orange[800], size: 18.sp),
+                  SizedBox(width: 10.w),
+                  Expanded(
+                    child: Text(
+                      'your holiday report succsfulyy submited please waiting for admin rreview',
+                      style: GoogleFonts.poppins(
+                        fontSize: 11.sp, 
+                        fontWeight: FontWeight.w600, 
+                        color: Colors.orange[900],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
           if (approvedCredits.isNotEmpty) ...[
             Text(
               'Available Approved Credits',
@@ -794,7 +1157,7 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Duty: ${c.dutyDate}', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600)),
+                        Text('Duty: ${c.dutyDate}${c.duration != null ? ' (${c.duration})' : ''}', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600)),
                         Text(c.reason, style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
                       ],
                     ),
@@ -817,7 +1180,7 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
           ),
           SizedBox(height: 8.h),
           OutlinedButton.icon(
-            onPressed: () => showModalBottomSheet(
+            onPressed: (isLimitReached || pendingCredits.isNotEmpty) ? null : () => showModalBottomSheet(
               context: context, 
               isScrollControlled: true, 
               backgroundColor: Colors.transparent, 
@@ -826,33 +1189,68 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                 child: const LogHolidayDutySheet()
               )
             ),
-            icon: Icon(Icons.history_edu_rounded, size: 16.sp),
-            label: Text('Log Holiday Duty Now', style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w600)),
+            icon: Icon(Icons.history_edu_rounded, size: 16.sp, color: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.grey : AppColors.primary),
+            label: Text('Submit Holiday Duty Report', style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w600)),
             style: OutlinedButton.styleFrom(
-              foregroundColor: AppColors.primary,
-              side: const BorderSide(color: AppColors.primary, width: 1.5),
+              foregroundColor: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.grey : AppColors.primary,
+              side: BorderSide(color: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.grey : AppColors.primary, width: 1.5),
               minimumSize: Size(double.infinity, 44.h),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
-              backgroundColor: AppColors.primary.withOpacity(0.05),
+              backgroundColor: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.grey.withOpacity(0.1) : AppColors.primary.withOpacity(0.05),
+            ),
+          ),
+          Padding(
+            padding: EdgeInsets.only(top: 10.h, left: 4.w),
+            child: Row(
+              children: [
+                Icon(
+                  (isLimitReached || pendingCredits.isNotEmpty) ? Icons.info_outline : Icons.tips_and_updates_outlined, 
+                  size: 14.sp, 
+                  color: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.red : AppColors.textTertiary
+                ),
+                SizedBox(width: 6.w),
+                Text(
+                  isLimitReached 
+                    ? 'You completed 2 times holiday report for this month'
+                    : pendingCredits.isNotEmpty 
+                      ? 'Waiting for admin approval' 
+                      : 'Note: Max 2 reports/month ($reportsRemaining remaining)',
+                  style: GoogleFonts.poppins(
+                    fontSize: 11.sp, 
+                    color: (isLimitReached || pendingCredits.isNotEmpty) ? Colors.red : AppColors.textTertiary, 
+                    fontWeight: FontWeight.w500
+                  ),
+                ),
+              ],
             ),
           ),
           SizedBox(height: 16.h),
           Text(
             'Step 2: Select the leave dates below',
-            style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
+            style: GoogleFonts.poppins(
+              fontSize: 12.sp, 
+              fontWeight: FontWeight.w600, 
+              color: (_selectedLeaveType == 'Compensatory Leave' && (pendingCredits.isNotEmpty || approvedCredits.isEmpty))
+                ? Colors.grey
+                : AppColors.textSecondary
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildSubmitButton(EmployeeLeaveProvider provider) => SizedBox(
+  Widget _buildSubmitButton(EmployeeLeaveProvider provider, LeaveProvider globalLeaveProvider, {bool isEnabled = true}) => SizedBox(
     width: double.infinity, 
     child: ElevatedButton(
-      onPressed: provider.isSubmitting ? null : () async { 
+      onPressed: (provider.isSubmitting || !isEnabled) ? null : () async {
         if (_formKey.currentState!.validate()) { 
           final days = _calculateCurrentDays(provider);
           final effectiveToDate = _isHalfDay ? _fromDate : _toDate;
+
+          // 0. Overlap Check
+          final activeError = _validateActiveLeave(_fromDate, effectiveToDate, provider.requests);
+          if (activeError != null) { _showPolicyAlert(context, activeError); return; }
 
           // 1. Casual Leave
           final clError = _validateCasualLeaveRules(_fromDate, effectiveToDate, provider.requests, provider);
@@ -863,7 +1261,7 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
           if (commError != null) { _showPolicyAlert(context, commError); return; }
 
           // 3. Half Pay Leave
-          final hplError = _validateHalfPayLeaveRules(_fromDate, effectiveToDate, provider.user, provider.balances);
+          final hplError = _validateHalfPayLeaveRules(_fromDate, effectiveToDate, provider.user, provider.balances, provider.requests);
           if (hplError != null) { _showPolicyAlert(context, hplError); return; }
 
           // 4. Earned Leave
@@ -894,7 +1292,8 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
             toDate: effectiveToDate, 
             reason: _reasonController.text.trim() +
                     (_isHalfDay ? ' (Half Day - $_halfDaySession)' : ''), 
-            customDays: days
+            customDays: days,
+            globalProvider: globalLeaveProvider,
           )) { 
             if (mounted) {
               Navigator.pop(context); 
@@ -965,6 +1364,8 @@ class _LogHolidayDutySheetState extends State<LogHolidayDutySheet> {
   final _reasonController = TextEditingController();
   String? _attachmentName;
   bool _isSubmitting = false;
+  int _selectedHours = 8;
+  int _selectedMinutes = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -982,6 +1383,8 @@ class _LogHolidayDutySheetState extends State<LogHolidayDutySheet> {
             SizedBox(height: 24.h),
             _buildDatePicker(),
             SizedBox(height: 16.h),
+            _buildDurationPicker(),
+            SizedBox(height: 16.h),
             _buildReasonField(),
             SizedBox(height: 16.h),
             _buildFilePicker(),
@@ -994,7 +1397,230 @@ class _LogHolidayDutySheetState extends State<LogHolidayDutySheet> {
   }
 
   Widget _buildDatePicker() => GestureDetector(onTap: () async { final p = await showDatePicker(context: context, initialDate: _dutyDate, firstDate: DateTime.now().subtract(const Duration(days: 30)), lastDate: DateTime.now()); if (p != null) setState(() => _dutyDate = p); }, child: Container(padding: EdgeInsets.all(14.r), decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: AppColors.border)), child: Row(children: [Icon(Icons.calendar_month_rounded, size: 18.sp, color: AppColors.primary), SizedBox(width: 12.w), Text('Date of Duty: ${DateFormat('dd MMM yyyy').format(_dutyDate)}', style: GoogleFonts.poppins(fontSize: 13.sp))])));
-  Widget _buildReasonField() => TextFormField(controller: _reasonController, maxLines: 2, decoration: InputDecoration(hintText: 'Duty details...', filled: true, fillColor: AppColors.surfaceVariant, enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: AppColors.border)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: AppColors.primary))));
+
+  Widget _buildDurationPicker() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text('Work Duration', style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)),
+        SizedBox(height: 8.h),
+        Row(
+          children: [
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w),
+                decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: AppColors.border)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedHours,
+                    items: List.generate(13, (index) => DropdownMenuItem(value: index, child: Text('$index Hours', style: GoogleFonts.poppins(fontSize: 13.sp)))),
+                    onChanged: (v) => setState(() => _selectedHours = v!),
+                  ),
+                ),
+              ),
+            ),
+            SizedBox(width: 12.w),
+            Expanded(
+              child: Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w),
+                decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: AppColors.border)),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _selectedMinutes,
+                    items: [0, 15, 30, 45].map((m) => DropdownMenuItem(value: m, child: Text('$m Minutes', style: GoogleFonts.poppins(fontSize: 13.sp)))).toList(),
+                    onChanged: (v) => setState(() => _selectedMinutes = v!),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReasonField() => TextFormField(controller: _reasonController, maxLines: 2, decoration: InputDecoration(hintText: 'Duty details...', filled: true, fillColor: AppColors.surfaceVariant, enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: const BorderSide(color: AppColors.border)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: AppColors.primary))));
   Widget _buildFilePicker() => GestureDetector(onTap: () async { final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['pdf']); if (r != null) setState(() => _attachmentName = r.files.first.name); }, child: Container(width: double.infinity, padding: EdgeInsets.all(14.r), decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: _attachmentName == null ? AppColors.error.withOpacity(0.3) : AppColors.success.withOpacity(0.3))), child: Row(children: [Icon(_attachmentName == null ? Icons.upload_file_rounded : Icons.check_circle_rounded, color: _attachmentName == null ? AppColors.error : AppColors.success, size: 20.sp), SizedBox(width: 12.w), Expanded(child: Text(_attachmentName ?? 'Attach Written Order (PDF)', style: GoogleFonts.poppins(fontSize: 13.sp, color: _attachmentName == null ? AppColors.textTertiary : AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis))])));
-  Widget _buildSubmitButton(EmployeeLeaveProvider p) => SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isSubmitting ? null : () async { if (_attachmentName == null || _reasonController.text.isEmpty) { AppHelpers.showError(context, 'Missing details'); return; } setState(() => _isSubmitting = true); if (await p.logHolidayDuty(dutyDate: _dutyDate, reason: _reasonController.text.trim(), attachment: _attachmentName!)) { Navigator.pop(context); AppHelpers.showSuccess(context, 'Duty Logged!'); } }, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, padding: EdgeInsets.symmetric(vertical: 14.h), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r))), child: _isSubmitting ? const CircularProgressIndicator(color: Colors.white) : Text('Submit Duty Report', style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600, color: Colors.white))));
+  Widget _buildSubmitButton(EmployeeLeaveProvider p) => SizedBox(width: double.infinity, child: ElevatedButton(onPressed: _isSubmitting ? null : () async { if (_attachmentName == null || _reasonController.text.isEmpty) { AppHelpers.showError(context, 'Missing details'); return; } setState(() => _isSubmitting = true); final durationStr = '${_selectedHours}h ${_selectedMinutes}m'; final globalProvider = Provider.of<LeaveProvider>(context, listen: false); if (await p.logHolidayDuty(dutyDate: _dutyDate, reason: _reasonController.text.trim(), attachment: _attachmentName!, duration: durationStr, globalProvider: globalProvider)) { Navigator.pop(context); AppHelpers.showSuccess(context, 'Duty Logged!'); } }, style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary, padding: EdgeInsets.symmetric(vertical: 14.h), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r))), child: _isSubmitting ? const CircularProgressIndicator(color: Colors.white) : Text('Submit Duty Report', style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600, color: Colors.white))));
+}
+
+class _EmployeeLeaveDetailsSheet extends StatelessWidget {
+  final EmployeeLeaveRequest request;
+
+  const _EmployeeLeaveDetailsSheet({required this.request});
+
+  @override
+  Widget build(BuildContext context) {
+    final statusColor = request.status == 'approved' ? AppColors.success : request.status == 'pending' ? AppColors.warning : request.status == 'closed' ? Colors.blueGrey : AppColors.error;
+    final statusBg = request.status == 'approved' ? AppColors.successLight : request.status == 'pending' ? AppColors.warningLight : request.status == 'closed' ? Colors.blueGrey.withOpacity(0.1) : AppColors.errorLight;
+
+    return Container(
+      padding: EdgeInsets.fromLTRB(20.r, 12.h, 20.r, MediaQuery.of(context).padding.bottom + 20.h),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24.r)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Center(
+            child: Container(
+              width: 40.w,
+              height: 4.h,
+              decoration: BoxDecoration(
+                color: AppColors.border,
+                borderRadius: BorderRadius.circular(2.r),
+              ),
+            ),
+          ),
+          SizedBox(height: 20.h),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Leave Application',
+                style: GoogleFonts.poppins(
+                  fontSize: 18.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
+                decoration: BoxDecoration(
+                  color: statusBg,
+                  borderRadius: BorderRadius.circular(20.r),
+                ),
+                child: Text(
+                  request.status.toUpperCase(),
+                  style: GoogleFonts.poppins(
+                    fontSize: 10.sp,
+                    fontWeight: FontWeight.w700,
+                    color: statusColor,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 24.h),
+          _infoTile('Leave Type', request.leaveType, Icons.event_note_outlined),
+          Row(
+            children: [
+              Expanded(child: _infoTile('From', request.fromDate, Icons.calendar_today_outlined)),
+              Expanded(child: _infoTile('To', request.toDate, Icons.event_available_outlined)),
+            ],
+          ),
+          _infoTile('Total Duration', '${request.days} Day${request.days > 1 ? 's' : ''}', Icons.timer_outlined),
+          SizedBox(height: 12.h),
+          Text(
+            'Reason for Leave',
+            style: GoogleFonts.poppins(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(12.r),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceVariant,
+              borderRadius: BorderRadius.circular(12.r),
+              border: Border.all(color: AppColors.border),
+            ),
+            child: Text(
+              request.reason,
+              style: GoogleFonts.poppins(
+                fontSize: 13.sp,
+                color: AppColors.textPrimary,
+              ),
+            ),
+          ),
+          SizedBox(height: 20.h),
+          Text(
+            'Timeline',
+            style: GoogleFonts.poppins(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textSecondary,
+            ),
+          ),
+          SizedBox(height: 8.h),
+          _timelineItem('Applied on', request.appliedOn, Icons.check_circle_outline, AppColors.primary),
+          if (request.status != 'pending')
+            _timelineItem(
+              request.status == 'approved' || request.status == 'closed' ? 'Approved by Admin' : 'Rejected by Admin',
+              'Action taken on Central Database',
+              request.status == 'rejected' ? Icons.cancel_outlined : Icons.verified_user_outlined,
+              statusColor,
+            ),
+          if (request.status == 'closed')
+            _timelineItem('Joined on', request.joiningDate ?? 'N/A', Icons.home_work_outlined, Colors.blueGrey),
+          SizedBox(height: 20.h),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                minimumSize: Size(0, 48.h),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+              ),
+              child: Text('Close', style: GoogleFonts.poppins(fontWeight: FontWeight.w600, color: Colors.white)),
+            ),
+          ),
+          SizedBox(height: 10.h),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoTile(String label, String value, IconData icon) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 16.h),
+      child: Row(
+        children: [
+          Container(
+            padding: EdgeInsets.all(8.r),
+            decoration: BoxDecoration(
+              color: AppColors.primary.withOpacity(0.05),
+              borderRadius: BorderRadius.circular(8.r),
+            ),
+            child: Icon(icon, size: 18.sp, color: AppColors.primary),
+          ),
+          SizedBox(width: 12.w),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary)),
+                Text(value, style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _timelineItem(String title, String subtitle, IconData icon, Color color) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: 12.h),
+      child: Row(
+        children: [
+          Icon(icon, size: 16.sp, color: color),
+          SizedBox(width: 12.w),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title, style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary)),
+              Text(subtitle, style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textTertiary)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
 }

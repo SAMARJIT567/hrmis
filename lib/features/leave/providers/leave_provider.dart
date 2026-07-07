@@ -5,11 +5,14 @@
 // ============================================================
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../models/leave_model.dart';
 
 class LeaveProvider extends ChangeNotifier {
   List<LeaveRequest> _all = [];
   List<LeaveRequest> _filtered = [];
+  List<CompOffCredit> _compOffReports = [];
   bool _isLoading = false;
   String _filter = 'All';
 
@@ -24,31 +27,201 @@ class LeaveProvider extends ChangeNotifier {
   ];
 
   List<LeaveRequest> get requests => _filtered;
+  List<LeaveRequest> get allRequests => _all;
+  List<CompOffCredit> get compOffReports => _compOffReports;
   bool get isLoading => _isLoading;
   String get currentFilter => _filter;
   List<LeavePolicy> get policies => _policies;
 
-  void updatePolicy(String id, int newTotal) {
-    final idx = _policies.indexWhere((p) => p.id == id);
+  Future<void> addCompOffReport(CompOffCredit report) async {
+    _compOffReports.insert(0, report);
+    notifyListeners();
+    await _saveCompOffReports();
+  }
+
+  Future<void> approveCompOffReport(String id) async {
+    final idx = _compOffReports.indexWhere((r) => r.id == id);
     if (idx != -1) {
-      _policies[idx] = _policies[idx].copyWith(totalDays: newTotal);
+      _compOffReports[idx] = _compOffReports[idx].copyWith(status: 'approved');
       notifyListeners();
+      await _saveCompOffReports();
     }
   }
 
-  int get pendingCount => _all.where((r) => r.status == 'pending').length;
+  Future<void> rejectCompOffReport(String id) async {
+    final idx = _compOffReports.indexWhere((r) => r.id == id);
+    if (idx != -1) {
+      _compOffReports[idx] = _compOffReports[idx].copyWith(status: 'rejected');
+      notifyListeners();
+      await _saveCompOffReports();
+    }
+  }
+
+  Future<void> updatePolicy(String id, int newTotal) async {
+    final idx = _policies.indexWhere((p) => p.id == id);
+    if (idx != -1) {
+      _policies[idx] = _policies[idx].copyWith(totalDays: newTotal);
+      _policies = List.from(_policies);
+      notifyListeners();
+      await _savePolicies();
+    }
+  }
+
+  int get pendingCount {
+    int leavePending = _all.where((r) => r.status == 'pending').length;
+    int reportPending = _compOffReports.where((r) => r.status == 'pending').length;
+    return leavePending + reportPending;
+  }
+  
   int get approvedCount => _all.where((r) => r.status == 'approved').length;
   int get rejectedCount => _all.where((r) => r.status == 'rejected').length;
-  int get totalCount => _all.length;
+  int get totalCount => _all.length + _compOffReports.length;
 
-  LeaveProvider() { loadLeaves(); }
+  LeaveProvider() {
+    _loadFromPrefs().then((_) => loadLeaves());
+  }
+
+  Future<void> _loadFromPrefs() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Load Policies
+      final String? policiesJson = prefs.getString('leave_policies');
+      if (policiesJson != null) {
+        final List<dynamic> decoded = jsonDecode(policiesJson);
+        _policies = decoded.map((item) => LeavePolicy(
+          id: item['id'],
+          title: item['title'],
+          description: item['description'],
+          totalDays: item['totalDays'],
+          usedDays: item['usedDays'],
+          iconName: item['iconName'],
+          colorValue: item['colorValue'],
+        )).toList();
+      }
+
+      // Load Requests
+      final String? requestsJson = prefs.getString('leave_requests');
+      if (requestsJson != null) {
+        final List<dynamic> decoded = jsonDecode(requestsJson);
+        _all = decoded.map((item) => LeaveRequest(
+          id: item['id'],
+          employeeId: item['employeeId'],
+          employeeName: item['employeeName'],
+          department: item['department'],
+          leaveType: item['leaveType'],
+          fromDate: item['fromDate'],
+          toDate: item['toDate'],
+          days: item['days'].toDouble(),
+          reason: item['reason'],
+          status: item['status'],
+          appliedOn: item['appliedOn'],
+          approvedBy: item['approvedBy'],
+          remarks: item['remarks'],
+        )).toList();
+      }
+
+      // Load CompOff Reports
+      final String? compOffJson = prefs.getString('compoff_reports');
+      if (compOffJson != null) {
+        final List<dynamic> decoded = jsonDecode(compOffJson);
+        _compOffReports = decoded.map((item) => CompOffCredit(
+          id: item['id'],
+          employeeId: item['employeeId'],
+          employeeName: item['employeeName'],
+          dutyDate: item['dutyDate'],
+          expiryDate: item['expiryDate'],
+          reason: item['reason'],
+          status: item['status'],
+          attachment: item['attachment'],
+          duration: item['duration'],
+        )).toList();
+      }
+
+      _applyFilter();
+      notifyListeners();
+    } catch (e) {
+      debugPrint('Error loading data: $e');
+    }
+  }
+
+  Future<void> _savePolicies() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String encoded = jsonEncode(_policies.map((p) => {
+        'id': p.id,
+        'title': p.title,
+        'description': p.description,
+        'totalDays': p.totalDays,
+        'usedDays': p.usedDays,
+        'iconName': p.iconName,
+        'colorValue': p.colorValue,
+      }).toList());
+      await prefs.setString('leave_policies', encoded);
+    } catch (e) {
+      debugPrint('Error saving policies: $e');
+    }
+  }
+
+  Future<void> _saveRequests() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String encoded = jsonEncode(_all.map((r) => {
+        'id': r.id,
+        'employeeId': r.employeeId,
+        'employeeName': r.employeeName,
+        'department': r.department,
+        'leaveType': r.leaveType,
+        'fromDate': r.fromDate,
+        'toDate': r.toDate,
+        'days': r.days,
+        'reason': r.reason,
+        'status': r.status,
+        'appliedOn': r.appliedOn,
+        'approvedBy': r.approvedBy,
+        'remarks': r.remarks,
+      }).toList());
+      await prefs.setString('leave_requests', encoded);
+    } catch (e) {
+      debugPrint('Error saving requests: $e');
+    }
+  }
+
+  Future<void> _saveCompOffReports() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final String encoded = jsonEncode(_compOffReports.map((r) => {
+        'id': r.id,
+        'employeeId': r.employeeId,
+        'employeeName': r.employeeName,
+        'dutyDate': r.dutyDate,
+        'expiryDate': r.expiryDate,
+        'reason': r.reason,
+        'status': r.status,
+        'attachment': r.attachment,
+        'duration': r.duration,
+      }).toList());
+      await prefs.setString('compoff_reports', encoded);
+    } catch (e) {
+      debugPrint('Error saving reports: $e');
+    }
+  }
+
+  Future<void> addLeaveRequest(LeaveRequest request) async {
+    _all.insert(0, request);
+    _applyFilter();
+    notifyListeners();
+    await _saveRequests();
+  }
 
   Future<void> loadLeaves() async {
     _isLoading = true;
     notifyListeners();
     await Future.delayed(const Duration(milliseconds: 400));
-    _all = List.from(LeaveMockData.requests);
-    _applyFilter();
+    if (_all.isEmpty) {
+      _all = List.from(LeaveMockData.requests);
+      _applyFilter();
+    }
     _isLoading = false;
     notifyListeners();
   }
@@ -65,7 +238,7 @@ class LeaveProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void approveLeave(String id) {
+  Future<void> approveLeave(String id) async {
     final idx = _all.indexWhere((r) => r.id == id);
     if (idx != -1) {
       _all[idx] = LeaveRequest(
@@ -73,13 +246,15 @@ class LeaveProvider extends ChangeNotifier {
         employeeName: _all[idx].employeeName, department: _all[idx].department,
         leaveType: _all[idx].leaveType, fromDate: _all[idx].fromDate,
         toDate: _all[idx].toDate, days: _all[idx].days, reason: _all[idx].reason,
-        status: 'approved', appliedOn: _all[idx].appliedOn, approvedBy: 'You',
+        status: 'approved', appliedOn: _all[idx].appliedOn, approvedBy: 'Admin',
       );
       _applyFilter();
+      notifyListeners();
+      await _saveRequests();
     }
   }
 
-  void rejectLeave(String id) {
+  Future<void> rejectLeave(String id) async {
     final idx = _all.indexWhere((r) => r.id == id);
     if (idx != -1) {
       _all[idx] = LeaveRequest(
@@ -87,9 +262,11 @@ class LeaveProvider extends ChangeNotifier {
         employeeName: _all[idx].employeeName, department: _all[idx].department,
         leaveType: _all[idx].leaveType, fromDate: _all[idx].fromDate,
         toDate: _all[idx].toDate, days: _all[idx].days, reason: _all[idx].reason,
-        status: 'rejected', appliedOn: _all[idx].appliedOn, approvedBy: 'You',
+        status: 'rejected', appliedOn: _all[idx].appliedOn, approvedBy: 'Admin',
       );
       _applyFilter();
+      notifyListeners();
+      await _saveRequests();
     }
   }
 }

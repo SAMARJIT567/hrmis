@@ -5,13 +5,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 
+import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
+import '../../../core/providers/navigation_provider.dart';
+import '../../auth/providers/auth_provider.dart';
 import '../../admin/screens/office_settings_screen.dart';
 import '../../employees/screens/add_employee_screen.dart';
 import '../../attendance/screens/attendance_screen.dart';
 import '../../leave/screens/leave_screen.dart';
-import '../../payroll/screens/payroll_screen.dart';
 import '../../leave/screens/leave_balance_screen.dart';
 
 class QuickActionButton extends StatelessWidget {
@@ -79,7 +81,6 @@ class QuickActionsSection extends StatelessWidget {
     _ActionData('Attendance', Icons.how_to_reg, AppColors.success, Color(0xFFECFDF5)),
     _ActionData('Apply Leave', Icons.event_available, AppColors.warning, Color(0xFFFFFBEB)),
     _ActionData('Leave Balance', Icons.account_balance_wallet_outlined, AppColors.secondary, Color(0xFFF5F3FF)),
-    _ActionData('Run Payroll', Icons.account_balance, AppColors.info, Color(0xFFCFFAFE)),
     _ActionData('Settings', Icons.settings_outlined, AppColors.textTertiary, Color(0xFFF8FAFC)),
   ];
 
@@ -112,6 +113,9 @@ class QuickActionsSection extends StatelessWidget {
             iconColor: a.color,
             bgColor: a.bgColor,
             onTap: () {
+              final navProv = context.read<NavigationProvider>();
+              final isAdmin = context.read<AuthProvider>().isAdmin;
+
               if (a.label == 'Settings') {
                 Navigator.push(
                   context,
@@ -127,26 +131,17 @@ class QuickActionsSection extends StatelessWidget {
                   ),
                 );
               } else if (a.label == 'Attendance') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const AttendanceScreen(),
-                  ),
-                );
+                if (isAdmin) {
+                  navProv.setIndex(2); // Attendance Tab
+                } else {
+                  navProv.setIndex(0); // Employee Dashboard has Attendance
+                }
               } else if (a.label == 'Apply Leave') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const LeaveScreen(),
-                  ),
-                );
-              } else if (a.label == 'Run Payroll') {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (context) => const PayrollScreen(),
-                  ),
-                );
+                if (isAdmin) {
+                  navProv.setIndex(3); // Leave Tab
+                } else {
+                  navProv.setIndex(2); // Employee Leave Tab
+                }
               } else if (a.label == 'Leave Balance') {
                 Navigator.pushNamed(context, '/leave-balance');
               }
