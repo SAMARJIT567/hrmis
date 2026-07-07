@@ -15,6 +15,7 @@ import '../../../core/utils/helpers.dart';
 import '../../../shared/widgets/loading_widget.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/leave_provider.dart';
+import '../models/leave_model.dart';
 
 // ─── DATA MODELS ─────────────────────────────────────────────
 
@@ -119,32 +120,57 @@ class EmployeeLeaveProvider extends ChangeNotifier {
   final AuthUser? user;
   List<EmployeeLeaveRequest> _requests = [];
   List<CompOffCredit> _compOffCredits = [];
-  List<LeaveBalance> _balances = [
-    const LeaveBalance(type: 'Casual Leave', total: 12, used: 4, color: AppColors.primary, icon: Icons.event_note_rounded),
-    const LeaveBalance(type: 'Commuted Leave', total: 120, used: 5, color: AppColors.error, icon: Icons.medical_services_rounded),
-    const LeaveBalance(type: 'Half Pay Leave', total: 60, used: 10, color: AppColors.warning, icon: Icons.history_edu_rounded),
-    const LeaveBalance(type: 'Earned Leave', total: 30, used: 5, color: AppColors.success, icon: Icons.beach_access_rounded),
-    const LeaveBalance(type: 'Maternity Leave', total: 180, used: 0, color: AppColors.secondary, icon: Icons.pregnant_woman_rounded),
-    const LeaveBalance(type: 'Paternity Leave', total: 15, used: 0, color: AppColors.accent, icon: Icons.child_care_rounded),
-    const LeaveBalance(type: 'Compensatory Leave', total: 5, used: 1, color: AppColors.warning, icon: Icons.celebration_rounded),
-    const LeaveBalance(type: 'Bereavement Leave', total: 5, used: 0, color: Color(0xFF475569), icon: Icons.heart_broken_rounded),
-    const LeaveBalance(type: 'Restricted Holiday', total: 2, used: 0, color: Color(0xFFD946EF), icon: Icons.festival_rounded),
-  ];
+  List<LeavePolicy> _globalPolicies = [];
+  
   bool _isLoading = false;
   bool _isSubmitting = false;
 
   List<EmployeeLeaveRequest> get requests => _requests;
   List<CompOffCredit> get compOffCredits => _compOffCredits;
-  List<LeaveBalance> get balances => _balances;
   bool get isLoading => _isLoading;
   bool get isSubmitting => _isSubmitting;
+
+  void updateGlobalPolicies(List<LeavePolicy> policies) {
+    _globalPolicies = policies;
+    notifyListeners();
+  }
+
+  List<LeaveBalance> get balances {
+    if (_globalPolicies.isEmpty) return [];
+
+    return _globalPolicies.map((policy) {
+      int total = policy.totalDays;
+
+      // Compensatory Leave logic
+      if (policy.id == 'CO') {
+        total = _compOffCredits.where((c) => c.status == 'approved').length;
+      }
+
+      return LeaveBalance(
+        type: policy.title,
+        total: total,
+        used: _calculateUsed(policy.title),
+        color: Color(policy.colorValue),
+        icon: AppHelpers.getLeaveIcon(policy.iconName),
+      );
+    }).toList();
+  }
+
+  int _calculateUsed(String type) {
+    double count = 0;
+    for (var r in _requests) {
+      if (r.leaveType == type && (r.status == 'approved' || r.status == 'closed')) {
+        count += r.days;
+      }
+    }
+    return count.toInt();
+  }
 
   int get pendingCount => _requests.where((r) => r.status == 'pending').length;
   int get approvedCount => _requests.where((r) => r.status == 'approved').length;
   int get rejectedCount => _requests.where((r) => r.status == 'rejected').length;
 
   EmployeeLeaveProvider({this.user}) {
-    _calculateProRataBalances();
     loadLeaveRequests();
   }
 
@@ -165,35 +191,15 @@ class EmployeeLeaveProvider extends ChangeNotifier {
     return count.toDouble();
   }
 
-  void _calculateProRataBalances() {
-    if (user == null || user!.joiningDate == null) return;
-    final joining = user!.joiningDate!;
-    final now = DateTime.now();
-
-    // 1. Casual Leave Pro-rata
-    if (joining.year == now.year) {
-      int monthsInService = now.month - joining.month + 1;
-      final clIndex = _balances.indexWhere((b) => b.type == 'Casual Leave');
-      if (clIndex != -1) {
-        _balances[clIndex] = LeaveBalance(type: 'Casual Leave', total: monthsInService, used: _balances[clIndex].used, color: _balances[clIndex].color, icon: _balances[clIndex].icon);
-      }
-    }
-
-    // 2. HPL & EL Logic (Simulated)
-    // In real app, fetch these from DB based on Assam Govt Rules
+  void updatePolicy(String id, int newTotal) {
+    // This is handled by globalPolicies update now
   }
 
   Future<void> loadLeaveRequests() async {
     _isLoading = true;
     notifyListeners();
     await Future.delayed(const Duration(milliseconds: 500));
-
-    _requests = [
-      const EmployeeLeaveRequest(id: '1', leaveType: 'Casual Leave', fromDate: '25 May 2025', toDate: '26 May 2025', days: 2.0, reason: 'Family function', status: 'approved', appliedOn: '20 May 2025'),
-      const EmployeeLeaveRequest(id: '2', leaveType: 'Commuted Leave', fromDate: '10 May 2025', toDate: '12 May 2025', days: 3.0, reason: 'Medical emergency', status: 'approved', appliedOn: '09 May 2025', medicalCertificate: 'med_cert_001.pdf'),
-      const EmployeeLeaveRequest(id: '3', leaveType: 'Earned Leave', fromDate: '01 Jun 2025', toDate: '05 Jun 2025', days: 5.0, reason: 'Vacation', status: 'pending', appliedOn: '25 May 2025'),
-    ];
-
+    _requests = [];
     _isLoading = false;
     notifyListeners();
   }
@@ -237,12 +243,6 @@ class EmployeeLeaveProvider extends ChangeNotifier {
     );
 
     _compOffCredits.insert(0, newCredit);
-    final index = _balances.indexWhere((b) => b.type == 'Compensatory Leave');
-    if (index != -1) {
-      final b = _balances[index];
-      _balances[index] = LeaveBalance(type: b.type, total: b.total + 1, used: b.used, color: b.color, icon: b.icon);
-    }
-
     _isSubmitting = false;
     notifyListeners();
     return true;
@@ -280,9 +280,17 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
+    final leaveProvider = Provider.of<LeaveProvider>(context);
+
     return MultiProvider(
       providers: [
-        ChangeNotifierProvider(create: (_) => EmployeeLeaveProvider(user: authProvider.currentUser)),
+        ChangeNotifierProxyProvider<LeaveProvider, EmployeeLeaveProvider>(
+          create: (context) => EmployeeLeaveProvider(user: authProvider.currentUser),
+          update: (context, leaveProv, employeeLeaveProv) {
+            employeeLeaveProv!.updateGlobalPolicies(leaveProv.policies);
+            return employeeLeaveProv;
+          },
+        ),
       ],
       child: Builder(
         builder: (context) => Scaffold(
@@ -317,45 +325,83 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Your Leave Balances', style: GoogleFonts.poppins(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
-            SizedBox(height: 10.h),
+            Padding(
+              padding: EdgeInsets.only(bottom: 12.h),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Leave Balances', style: GoogleFonts.poppins(fontSize: 17.sp, fontWeight: FontWeight.w700, color: AppColors.textPrimary)),
+                  Text('${provider.balances.length} Types', style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary, fontWeight: FontWeight.w500)),
+                ],
+              ),
+            ),
             SizedBox(
-              height: 120.h,
+              height: 155.h,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
                 physics: const BouncingScrollPhysics(),
                 itemCount: provider.balances.length,
                 itemBuilder: (context, index) {
                   final balance = provider.balances[index];
+                  final progress = balance.total > 0 ? (balance.remaining / balance.total) : 0.0;
+                  
                   return Container(
                     width: 130.w,
-                    margin: EdgeInsets.only(right: 12.w, bottom: 4.h),
-                    padding: EdgeInsets.all(12.r),
+                    margin: EdgeInsets.only(right: 12.w, bottom: 10.h),
+                    padding: EdgeInsets.all(14.r),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(16.r),
+                      borderRadius: BorderRadius.circular(20.r),
+                      boxShadow: [
+                        BoxShadow(
+                          color: balance.color.withOpacity(0.06),
+                          blurRadius: 10,
+                          offset: const Offset(0, 4),
+                        ),
+                      ],
                       border: Border.all(color: AppColors.border.withOpacity(0.5)),
-                      boxShadow: [BoxShadow(color: AppColors.shadow.withOpacity(0.04), blurRadius: 8, offset: const Offset(0, 2))],
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Container(padding: EdgeInsets.all(6.r), decoration: BoxDecoration(color: balance.color.withOpacity(0.1), borderRadius: BorderRadius.circular(8.r)), child: Icon(balance.icon, color: balance.color, size: 14.sp)),
-                            Text('${balance.total} T', style: GoogleFonts.poppins(fontSize: 7.sp, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+                            Container(
+                              padding: EdgeInsets.all(8.r),
+                              decoration: BoxDecoration(
+                                color: balance.color.withOpacity(0.12),
+                                borderRadius: BorderRadius.circular(12.r),
+                              ),
+                              child: Icon(balance.icon, color: balance.color, size: 18.sp),
+                            ),
+                            Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                Text('${balance.remaining}', style: GoogleFonts.poppins(fontSize: 20.sp, fontWeight: FontWeight.w800, color: balance.color, height: 1.1)),
+                                Text('Days', style: GoogleFonts.poppins(fontSize: 8.sp, fontWeight: FontWeight.w600, color: AppColors.textTertiary)),
+                              ],
+                            ),
                           ],
                         ),
-                        SizedBox(height: 8.h),
-                        Text(balance.type, style: GoogleFonts.poppins(fontSize: 9.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const Spacer(),
+                        Text(balance.type, style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w700, color: AppColors.textPrimary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        SizedBox(height: 6.h),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(6.r),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            backgroundColor: balance.color.withOpacity(0.1),
+                            color: balance.color,
+                            minHeight: 5.h,
+                          ),
+                        ),
+                        SizedBox(height: 6.h),
                         Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Text('${balance.remaining}', style: GoogleFonts.poppins(fontSize: 16.sp, fontWeight: FontWeight.w800, color: balance.color)),
-                            Text(' Left', style: GoogleFonts.poppins(fontSize: 8.sp, fontWeight: FontWeight.w500, color: AppColors.textTertiary)),
+                            Text('Total: ${balance.total}', style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textSecondary, fontWeight: FontWeight.w500)),
+                            Text('${(progress * 100).toInt()}%', style: GoogleFonts.poppins(fontSize: 9.sp, color: balance.color, fontWeight: FontWeight.w700)),
                           ],
                         ),
                       ],
@@ -492,7 +538,6 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
   String? _selectedLeaveType;
   DateTime _fromDate = DateTime.now();
   DateTime _toDate = DateTime.now();
-  Map<String, String>? _selectedRH;
   bool _isHalfDay = false;
   bool _isToDateSelected = false;
   String _halfDaySession = 'Forenoon';
@@ -531,13 +576,6 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
     final days = (to.difference(from).inDays + 1).toDouble();
     final hplBalance = balances.firstWhere((b) => b.type == 'Half Pay Leave');
     if (hplBalance.remaining < days) return 'Insufficient Half Pay Leave (HPL) balance.';
-    return null;
-  }
-
-  String? _validateRestrictedHolidayRules(List<LeaveBalance> balances) {
-    if (_selectedLeaveType != 'Restricted Holiday') return null;
-    final rhBalance = balances.firstWhere((b) => b.type == 'Restricted Holiday');
-    if (rhBalance.remaining < 1) return 'Restricted Holiday quota (2 days/year) used.';
     return null;
   }
 
@@ -622,9 +660,8 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
                   if (_selectedLeaveType == 'Casual Leave') _buildHalfDayToggle(),
                   if (_selectedLeaveType == 'Maternity Leave') _buildMiscarriageToggle(),
                   if (_selectedLeaveType == 'Paternity Leave') _buildDeliveryDatePicker(),
-                  if (_selectedLeaveType == 'Restricted Holiday') _buildRHDropdown(globalLeaveProvider),
                   if (_selectedLeaveType == 'Compensatory Leave') _buildLogDutyButton(provider),
-                  if (_selectedLeaveType != 'Restricted Holiday' && _selectedLeaveType != 'Paternity Leave') _buildDatePickers(),
+                  if (_selectedLeaveType != 'Paternity Leave') _buildDatePickers(),
                   _buildUploadSection(),
                   _buildDurationDisplay(provider),
                   _buildReasonField(),
@@ -652,16 +689,11 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
               onChanged: (value) => setState(() {
                 _selectedLeaveType = value;
                 _isMiscarriage = false;
-                _isToDateSelected = (_selectedLeaveType == 'Restricted Holiday' || _selectedLeaveType == 'Maternity Leave' || _selectedLeaveType == 'Paternity Leave');
+                _isToDateSelected = (_selectedLeaveType == 'Maternity Leave' || _selectedLeaveType == 'Paternity Leave');
                 if (_selectedLeaveType == 'Maternity Leave') _toDate = _fromDate.add(const Duration(days: 179));
                 if (_selectedLeaveType == 'Paternity Leave') _toDate = _fromDate.add(const Duration(days: 14));
-                if (_selectedLeaveType == 'Compensatory Leave' || _selectedLeaveType == 'Commuted Leave' || _selectedLeaveType == 'Half Pay Leave' || _selectedLeaveType == 'Earned Leave' || _selectedLeaveType == 'Maternity Leave' || _selectedLeaveType == 'Paternity Leave' || _selectedLeaveType == 'Restricted Holiday') {
+                if (_selectedLeaveType == 'Compensatory Leave' || _selectedLeaveType == 'Commuted Leave' || _selectedLeaveType == 'Half Pay Leave' || _selectedLeaveType == 'Earned Leave' || _selectedLeaveType == 'Maternity Leave' || _selectedLeaveType == 'Paternity Leave') {
                   _isHalfDay = false;
-                }
-                if (_selectedLeaveType == 'Restricted Holiday' && global.restrictedHolidaysList.isNotEmpty) {
-                  _selectedRH = global.restrictedHolidaysList.first;
-                  _fromDate = DateFormat('dd MMM yyyy').parse(_selectedRH!['date']!);
-                  _toDate = _fromDate;
                 }
               }),
           ),
@@ -693,9 +725,6 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
     } else if (_selectedLeaveType == 'Paternity Leave') {
       rules = '• ELIGIBILITY: Male employees with < 2 children.\n• DURATION: 15 days continuous block (Full Pay).\n• AUTOMATIC: Leave dates are auto-calculated from Delivery Date.\n• UPLOAD: Birth Certificate mandatory.';
       color = AppColors.accent;
-    } else if (_selectedLeaveType == 'Restricted Holiday') {
-      rules = '• LIMIT: Only 2 days allowed in a year.\n• DURATION: Full Day off (8 Hours).\n• LIST: Select your holiday from the list provided below.';
-      color = const Color(0xFFD946EF);
     }
     if (rules.isEmpty) return const SizedBox.shrink();
     return Container(margin: EdgeInsets.only(top: 12.h), padding: EdgeInsets.all(12.r), decoration: BoxDecoration(color: color.withOpacity(0.08), borderRadius: BorderRadius.circular(12.r), border: Border.all(color: color.withOpacity(0.2))), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [Row(children: [Icon(Icons.info_outline_rounded, color: color, size: 16.sp), SizedBox(width: 8.w), Text('$_selectedLeaveType Rules', style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w700, color: color))]), SizedBox(height: 4.h), Text(rules, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textPrimary.withOpacity(0.8), height: 1.5))]));
@@ -705,8 +734,6 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
   Widget _buildMiscarriageToggle() => Padding(padding: EdgeInsets.only(top: 12.h), child: Row(children: [Checkbox(value: _isMiscarriage, activeColor: AppColors.secondary, onChanged: (v) => setState(() { _isMiscarriage = v ?? false; _toDate = _fromDate.add(Duration(days: _isMiscarriage ? 44 : 179)); })), SizedBox(width: 8.w), Text('Case of Miscarriage/Abortion (Max 45 Days)', style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w500))]));
 
   Widget _buildDeliveryDatePicker() => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(height: 16.h), Text('Date of Delivery', style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)), SizedBox(height: 6.h), GestureDetector(onTap: () async { final p = await showDatePicker(context: context, initialDate: _deliveryDate ?? DateTime.now(), firstDate: DateTime.now().subtract(const Duration(days: 200)), lastDate: DateTime.now().add(const Duration(days: 30))); if (p != null) setState(() { _deliveryDate = p; _fromDate = p; _toDate = p.add(const Duration(days: 14)); _isToDateSelected = true; }); }, child: Container(padding: EdgeInsets.all(14.r), decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: AppColors.border)), child: Row(children: [Icon(Icons.event_available_rounded, size: 18.sp, color: AppColors.accent), SizedBox(width: 12.w), Text(_deliveryDate == null ? 'Select Delivery Date' : DateFormat('dd MMM yyyy').format(_deliveryDate!), style: GoogleFonts.poppins(fontSize: 13.sp))])) )]);
-
-  Widget _buildRHDropdown(LeaveProvider global) => Column(crossAxisAlignment: CrossAxisAlignment.start, children: [SizedBox(height: 16.h), Text('Select Restricted Holiday', style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary)), SizedBox(height: 6.h), Container(padding: EdgeInsets.symmetric(horizontal: 12.w), decoration: BoxDecoration(color: AppColors.surfaceVariant, borderRadius: BorderRadius.circular(12.r), border: Border.all(color: AppColors.border)), child: DropdownButtonHideUnderline(child: DropdownButton<Map<String, String>>(value: _selectedRH, isExpanded: true, items: global.restrictedHolidaysList.map((rh) => DropdownMenuItem(value: rh, child: Text('${rh['name']} (${rh['date']})', style: GoogleFonts.poppins(fontSize: 13.sp)))).toList(), onChanged: (v) => setState(() { _selectedRH = v; _fromDate = DateFormat('dd MMM yyyy').parse(v!['date']!); _toDate = _fromDate; }))))]);
 
   Widget _buildDatePickers() => Column(children: [
     SizedBox(height: 16.h),
@@ -734,16 +761,61 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
   Widget _buildReasonField() => TextFormField(controller: _reasonController, maxLines: 2, decoration: InputDecoration(hintText: 'Reason for leave', filled: true, fillColor: AppColors.surfaceVariant, enabledBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: const BorderSide(color: AppColors.border)), focusedBorder: OutlineInputBorder(borderRadius: BorderRadius.circular(12.r), borderSide: BorderSide(color: AppColors.primary))), validator: (v) => (v == null || v.trim().isEmpty) ? 'Please enter a valid reason' : null);
 
   Widget _buildLogDutyButton(EmployeeLeaveProvider provider) {
+    final approvedCredits = provider.compOffCredits.where((c) => c.status == 'approved').toList();
+    
     return Padding(
       padding: EdgeInsets.only(top: 16.h),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (approvedCredits.isNotEmpty) ...[
+            Text(
+              'Available Approved Credits',
+              style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w700, color: AppColors.success),
+            ),
+            SizedBox(height: 8.h),
+            ...approvedCredits.map((c) => Container(
+              margin: EdgeInsets.only(bottom: 8.h),
+              padding: EdgeInsets.all(12.r),
+              decoration: BoxDecoration(
+                color: AppColors.success.withOpacity(0.05),
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: AppColors.success.withOpacity(0.2)),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.all(6.r),
+                    decoration: BoxDecoration(color: AppColors.success.withOpacity(0.1), shape: BoxShape.circle),
+                    child: Icon(Icons.verified_rounded, color: AppColors.success, size: 14.sp),
+                  ),
+                  SizedBox(width: 12.w),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Duty: ${c.dutyDate}', style: GoogleFonts.poppins(fontSize: 11.sp, fontWeight: FontWeight.w600)),
+                        Text(c.reason, style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textSecondary), maxLines: 1, overflow: TextOverflow.ellipsis),
+                      ],
+                    ),
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text('Valid Until', style: GoogleFonts.poppins(fontSize: 8.sp, color: AppColors.textHint)),
+                      Text(c.expiryDate, style: GoogleFonts.poppins(fontSize: 9.sp, fontWeight: FontWeight.w600, color: AppColors.error)),
+                    ],
+                  ),
+                ],
+              ),
+            )).toList(),
+            SizedBox(height: 8.h),
+          ],
           Text(
-            'Step 1: Credit your duty',
+            'Step 1: Credit your duty (if not listed above)',
             style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
           ),
-          SizedBox(height: 6.h),
+          SizedBox(height: 8.h),
           OutlinedButton.icon(
             onPressed: () => showModalBottomSheet(
               context: context, 
@@ -764,7 +836,7 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
               backgroundColor: AppColors.primary.withOpacity(0.05),
             ),
           ),
-          SizedBox(height: 8.h),
+          SizedBox(height: 16.h),
           Text(
             'Step 2: Select the leave dates below',
             style: GoogleFonts.poppins(fontSize: 12.sp, fontWeight: FontWeight.w600, color: AppColors.textSecondary),
@@ -794,23 +866,19 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
           final hplError = _validateHalfPayLeaveRules(_fromDate, effectiveToDate, provider.user, provider.balances);
           if (hplError != null) { _showPolicyAlert(context, hplError); return; }
 
-          // 4. Restricted Holiday
-          final rhError = _validateRestrictedHolidayRules(provider.balances);
-          if (rhError != null) { _showPolicyAlert(context, rhError); return; }
-
-          // 5. Earned Leave
+          // 4. Earned Leave
           final elError = _validateEarnedLeaveRules(_fromDate, effectiveToDate, provider.user, provider.requests);
           if (elError != null) { _showPolicyAlert(context, elError); return; }
 
-          // 6. Maternity Leave
+          // 5. Maternity Leave
           final mlError = _validateMaternityLeaveRules(provider.user);
           if (mlError != null) { _showPolicyAlert(context, mlError); return; }
 
-          // 7. Paternity Leave
+          // 6. Paternity Leave
           final plError = _validatePaternityLeaveRules(_fromDate, provider.user);
           if (plError != null) { _showPolicyAlert(context, plError); return; }
 
-          // 8. Compensatory Leave
+          // 7. Compensatory Leave
           final compError = _validateCompensatoryLeaveRules(_fromDate, effectiveToDate, provider.compOffCredits);
           if (compError != null) { _showPolicyAlert(context, compError); return; }
 
@@ -824,8 +892,7 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
             leaveType: _selectedLeaveType!, 
             fromDate: _fromDate, 
             toDate: effectiveToDate, 
-            reason: (_selectedLeaveType == 'Restricted Holiday' ? '[RH: ${_selectedRH?['name']}] ' : '') + 
-                    _reasonController.text.trim() + 
+            reason: _reasonController.text.trim() +
                     (_isHalfDay ? ' (Half Day - $_halfDaySession)' : ''), 
             customDays: days
           )) { 

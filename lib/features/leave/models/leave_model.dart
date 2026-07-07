@@ -37,53 +37,7 @@ class LeaveRequest {
 }
 
 class LeaveMockData {
-  static List<LeaveRequest> get requests => [
-    const LeaveRequest(
-      id: 'LVE001', employeeId: 'EMP003', employeeName: 'Amit Verma',
-      department: 'Finance', leaveType: 'Sick Leave',
-      fromDate: '25 May 2025', toDate: '26 May 2025', days: 2,
-      reason: 'Fever and cold, doctor advised rest.',
-      status: 'pending', appliedOn: '24 May 2025',
-    ),
-    const LeaveRequest(
-      id: 'LVE002', employeeId: 'EMP005', employeeName: 'Vikas Kumar',
-      department: 'Marketing', leaveType: 'Casual Leave',
-      fromDate: '22 May 2025', toDate: '22 May 2025', days: 1,
-      reason: 'Family function.',
-      status: 'approved', appliedOn: '20 May 2025',
-      approvedBy: 'Priya Singh',
-    ),
-    const LeaveRequest(
-      id: 'LVE003', employeeId: 'EMP004', employeeName: 'Sneha Patel',
-      department: 'Design', leaveType: 'Earned Leave',
-      fromDate: '01 Jun 2025', toDate: '05 Jun 2025', days: 5,
-      reason: 'Vacation trip.',
-      status: 'pending', appliedOn: '23 May 2025',
-    ),
-    const LeaveRequest(
-      id: 'LVE004', employeeId: 'EMP006', employeeName: 'Ananya Roy',
-      department: 'Engineering', leaveType: 'Sick Leave',
-      fromDate: '18 May 2025', toDate: '19 May 2025', days: 2,
-      reason: 'Migraine.',
-      status: 'approved', appliedOn: '17 May 2025',
-      approvedBy: 'Rahul Sharma',
-    ),
-    const LeaveRequest(
-      id: 'LVE005', employeeId: 'EMP008', employeeName: 'Kavya Reddy',
-      department: 'Operations', leaveType: 'Casual Leave',
-      fromDate: '10 May 2025', toDate: '10 May 2025', days: 1,
-      reason: 'Personal work.',
-      status: 'rejected', appliedOn: '09 May 2025',
-      approvedBy: 'CEO', remarks: 'Critical project deadline.',
-    ),
-    const LeaveRequest(
-      id: 'LVE006', employeeId: 'EMP001', employeeName: 'Rahul Sharma',
-      department: 'Engineering', leaveType: 'Earned Leave',
-      fromDate: '28 May 2025', toDate: '30 May 2025', days: 3,
-      reason: 'Annual family trip.',
-      status: 'pending', appliedOn: '25 May 2025',
-    ),
-  ];
+  static List<LeaveRequest> get requests => [];
 }
 
 class LeavePolicy {

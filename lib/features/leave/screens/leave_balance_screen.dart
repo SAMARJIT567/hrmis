@@ -9,6 +9,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../../../core/constants/app_colors.dart';
+import '../../../core/utils/helpers.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/leave_provider.dart';
 import '../models/leave_model.dart';
@@ -133,7 +134,6 @@ class LeaveBalanceScreen extends StatelessWidget {
     final available = total - used;
     final progress = total > 0 ? used / total : 0.0;
     final color = Color(policy.colorValue);
-    final icon = _getIconData(policy.iconName);
 
     return Container(
       margin: EdgeInsets.only(bottom: 16.h),
@@ -153,7 +153,7 @@ class LeaveBalanceScreen extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(10.r),
                 decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(12.r)),
-                child: Icon(icon, color: color, size: 22.sp),
+                child: Icon(AppHelpers.getLeaveIcon(policy.iconName), color: color, size: 22.sp),
               ),
               SizedBox(width: 16.w),
               Expanded(
@@ -329,18 +329,5 @@ class LeaveBalanceScreen extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  IconData _getIconData(String name) {
-    switch (name) {
-      case 'event_note_rounded': return Icons.event_note_rounded;
-      case 'medical_services_outlined': return Icons.medical_services_outlined;
-      case 'beach_access_rounded': return Icons.beach_access_rounded;
-      case 'pregnant_woman_rounded': return Icons.pregnant_woman_rounded;
-      case 'child_care_rounded': return Icons.child_care_rounded;
-      case 'celebration_rounded': return Icons.celebration_rounded;
-      case 'heart_broken_rounded': return Icons.heart_broken_rounded;
-      default: return Icons.help_outline;
-    }
   }
 }

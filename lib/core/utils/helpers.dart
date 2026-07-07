@@ -165,4 +165,29 @@ class AppHelpers {
         return Icons.business_rounded;
     }
   }
+
+  // ─── Leave Icon ───────────────────────────────────────────────
+  static IconData getLeaveIcon(String iconName) {
+    switch (iconName) {
+      case 'event_note_rounded':
+        return Icons.event_note_rounded;
+      case 'medical_services_outlined':
+      case 'medical_services_rounded':
+        return Icons.medical_services_rounded;
+      case 'beach_access_rounded':
+        return Icons.beach_access_rounded;
+      case 'pregnant_woman_rounded':
+        return Icons.pregnant_woman_rounded;
+      case 'child_care_rounded':
+        return Icons.child_care_rounded;
+      case 'celebration_rounded':
+        return Icons.celebration_rounded;
+      case 'heart_broken_rounded':
+        return Icons.heart_broken_rounded;
+      case 'history_edu_rounded':
+        return Icons.history_edu_rounded;
+      default:
+        return Icons.help_outline;
+    }
+  }
 }
