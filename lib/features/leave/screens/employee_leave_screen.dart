@@ -17,6 +17,8 @@ import '../../../shared/widgets/loading_widget.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../providers/leave_provider.dart';
 import '../models/leave_model.dart';
+import '../../attendance/providers/employee_attendance_provider.dart';
+
 
 // ─── DATA MODELS ─────────────────────────────────────────────
 
@@ -86,7 +88,31 @@ class LeaveBalance {
   });
 }
 
+class WeekRange {
+  final DateTime start;
+  final DateTime end;
+  final String label;
+
+  const WeekRange({
+    required this.start,
+    required this.end,
+    required this.label,
+  });
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is WeekRange &&
+          runtimeType == other.runtimeType &&
+          start == other.start &&
+          end == other.end;
+
+  @override
+  int get hashCode => start.hashCode ^ end.hashCode;
+}
+
 // ─── STATE MANAGEMENT ────────────────────────────────────────
+
 
 class EmployeeLeaveProvider extends ChangeNotifier {
   final AuthUser? user;
@@ -295,6 +321,115 @@ class EmployeeLeaveScreen extends StatefulWidget {
 }
 
 class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
+  String _filterType = 'monthly'; // 'weekly' | 'monthly' | 'yearly'
+  late WeekRange _selectedWeek;
+  late int _selectedMonth;
+  late int _selectedYear;
+  
+  List<WeekRange> _weeksList = [];
+  final List<int> _yearsList = [];
+  final List<int> _monthsList = List.generate(12, (index) => index + 1);
+
+  int _activeTab = 0; // 0 for Leaves, 1 for Attendance
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _weeksList = _getRecentWeeks();
+    _selectedWeek = _weeksList.first;
+    _selectedMonth = now.month;
+    _selectedYear = now.year;
+    
+    // Populate last 3 years
+    for (int y = now.year; y >= now.year - 2; y--) {
+      _yearsList.add(y);
+    }
+  }
+
+  List<WeekRange> _getRecentWeeks() {
+    final List<WeekRange> weeks = [];
+    final now = DateTime.now();
+    
+    // Find the start of the current week (Sunday)
+    DateTime currentSunday = now.subtract(Duration(days: now.weekday % 7));
+    currentSunday = DateTime(currentSunday.year, currentSunday.month, currentSunday.day);
+
+    for (int i = 0; i < 8; i++) {
+      final start = currentSunday.subtract(Duration(days: i * 7));
+      final end = start.add(const Duration(days: 6, hours: 23, minutes: 59, seconds: 59));
+      
+      String label = "";
+      if (i == 0) {
+        label = "This Week (${DateFormat('dd MMM').format(start)} - ${DateFormat('dd MMM').format(end)})";
+      } else if (i == 1) {
+        label = "Last Week (${DateFormat('dd MMM').format(start)} - ${DateFormat('dd MMM').format(end)})";
+      } else {
+        label = "${i} Weeks Ago (${DateFormat('dd MMM').format(start)} - ${DateFormat('dd MMM').format(end)})";
+      }
+      weeks.add(WeekRange(start: start, end: end, label: label));
+    }
+    return weeks;
+  }
+
+  DateTime? _parseAnyDate(String dateStr) {
+    if (dateStr.isEmpty) return null;
+    try {
+      if (dateStr.contains(RegExp(r'[a-zA-Z]'))) {
+        return DateFormat('dd MMM yyyy').parse(dateStr);
+      } else {
+        return DateFormat('yyyy-MM-dd').parse(dateStr);
+      }
+    } catch (_) {
+      try {
+        return DateTime.parse(dateStr);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  Map<String, DateTime> _getCurrentFilterRange() {
+    DateTime start;
+    DateTime end;
+    
+    if (_filterType == 'weekly') {
+      start = _selectedWeek.start;
+      end = _selectedWeek.end;
+    } else if (_filterType == 'monthly') {
+      start = DateTime(_selectedYear, _selectedMonth, 1);
+      end = DateTime(_selectedYear, _selectedMonth + 1, 0, 23, 59, 59);
+    } else {
+      start = DateTime(_selectedYear, 1, 1);
+      end = DateTime(_selectedYear, 12, 31, 23, 59, 59);
+    }
+    
+    return {'start': start, 'end': end};
+  }
+
+  bool _isLeaveInPeriod(EmployeeLeaveRequest request, DateTime start, DateTime end) {
+    final fromDate = _parseAnyDate(request.fromDate);
+    final toDate = _parseAnyDate(request.toDate);
+    if (fromDate == null || toDate == null) return false;
+    
+    return fromDate.isBefore(end.add(const Duration(days: 1))) &&
+           toDate.isAfter(start.subtract(const Duration(days: 1)));
+  }
+
+  bool _isDutyReportInPeriod(CompOffCredit credit, DateTime start, DateTime end) {
+    final dutyDate = _parseAnyDate(credit.dutyDate);
+    if (dutyDate == null) return false;
+    return dutyDate.isAfter(start.subtract(const Duration(days: 1))) &&
+           dutyDate.isBefore(end.add(const Duration(days: 1)));
+  }
+
+  bool _isAttendanceInPeriod(EmployeeAttendanceRecord record, DateTime start, DateTime end) {
+    final recordDate = _parseAnyDate(record.date);
+    if (recordDate == null) return false;
+    return recordDate.isAfter(start.subtract(const Duration(days: 1))) &&
+           recordDate.isBefore(end.add(const Duration(days: 1)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final authProvider = Provider.of<AuthProvider>(context);
@@ -311,31 +446,38 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
         ),
       ],
       child: Builder(
-        builder: (context) => Scaffold(
-          backgroundColor: AppColors.background,
-          body: Column(
-            children: [
-              _buildHeader(context),
-              Expanded(
-                child: ListView(
-                  physics: const BouncingScrollPhysics(),
-                  padding: EdgeInsets.symmetric(horizontal: 16.r, vertical: 10.r),
-                  children: [
-                    _buildLeaveBalanceCard(),
-                    _buildStatsRow(),
-                    _buildActionButtons(context),
-                    _buildHistoryTitle(),
-                    _buildLeaveHistory(context),
-                    SizedBox(height: 100.h),
-                  ],
+        builder: (context) {
+          final employeeLeaveProv = Provider.of<EmployeeLeaveProvider>(context);
+          final attendanceProv = Provider.of<EmployeeAttendanceProvider>(context);
+
+          return Scaffold(
+            backgroundColor: AppColors.background,
+            body: Column(
+              children: [
+                _buildHeader(context),
+                Expanded(
+                  child: ListView(
+                    physics: const BouncingScrollPhysics(),
+                    padding: EdgeInsets.symmetric(horizontal: 16.r, vertical: 10.r),
+                    children: [
+                      _buildLeaveBalanceCard(),
+                      _buildActionButtons(context),
+                      _buildFilterSection(context),
+                      _buildPeriodInsightsCard(employeeLeaveProv, attendanceProv),
+                      _buildTabSelector(),
+                      _buildTabContent(context, employeeLeaveProv, attendanceProv),
+                      SizedBox(height: 100.h),
+                    ],
+                  ),
                 ),
-              ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        }
       ),
     );
   }
+
 
   Widget _buildHeader(BuildContext context) {
     return Container(
@@ -495,27 +637,6 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
     );
   }
 
-  Widget _buildStatsRow() {
-    return Consumer<EmployeeLeaveProvider>(
-      builder: (_, provider, __) {
-        return Container(
-          margin: EdgeInsets.only(top: 8.h, bottom: 16.h),
-          padding: EdgeInsets.all(16.r),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16.r), boxShadow: const [BoxShadow(color: AppColors.shadow, blurRadius: 10, offset: Offset(0, 2))]),
-          child: Row(
-            children: [
-              _statItem('Pending', provider.pendingCount, AppColors.warning),
-              _statDivider(),
-              _statItem('Approved', provider.approvedCount, AppColors.success),
-              _statDivider(),
-              _statItem('Rejected', provider.rejectedCount, AppColors.error),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
   Widget _buildActionButtons(BuildContext context) {
     final provider = Provider.of<EmployeeLeaveProvider>(context, listen: false);
     return ElevatedButton.icon(
@@ -539,48 +660,626 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
     );
   }
 
-  Widget _statItem(String label, int count, Color color) => Expanded(child: Column(children: [Text('$count', style: GoogleFonts.poppins(fontSize: 18.sp, fontWeight: FontWeight.w700, color: color)), Text(label, style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textSecondary))]));
-  Widget _statDivider() => Container(width: 1, height: 30.h, color: AppColors.border);
-
-  Widget _buildHistoryTitle() => Padding(padding: EdgeInsets.only(top: 16.h, bottom: 8.h), child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [Text('Leave History', style: GoogleFonts.poppins(fontSize: 16.sp, fontWeight: FontWeight.w700, color: AppColors.textPrimary)), Text('Recent requests', style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textTertiary))]));
-
-  Widget _buildLeaveHistory(BuildContext context) {
-    return Consumer<EmployeeLeaveProvider>(
-      builder: (_, provider, __) {
-        if (provider.isLoading) return const Center(child: InlineLoader());
-        
-        final allItems = [
-          ...provider.requests,
-          ...provider.compOffCredits,
-        ];
-
-        // Sort: newest ID (numeric) descending so latest is at the top
-        allItems.sort((a, b) {
-          final idAStr = (a is EmployeeLeaveRequest) ? a.id : (a as CompOffCredit).id;
-          final idBStr = (b is EmployeeLeaveRequest) ? b.id : (b as CompOffCredit).id;
-          final idAVal = int.tryParse(idAStr) ?? 0;
-          final idBVal = int.tryParse(idBStr) ?? 0;
-
-          if (idAVal != 0 && idBVal != 0) {
-            return idBVal.compareTo(idAVal);
-          }
-          return idBStr.compareTo(idAStr);
-        });
-
-        if (allItems.isEmpty) return const EmptyStateWidget(icon: Icons.event_busy_rounded, title: 'No History', subtitle: 'Your leave history and duty reports will appear here.');
-        
-        return Column(
-          children: allItems.map((item) {
-            if (item is EmployeeLeaveRequest) {
-              return _buildHistoryCard(context, item, provider);
-            } else {
-              return _buildDutyReportHistoryCard(context, item as CompOffCredit, provider);
-            }
-          }).toList()
-        );
-      },
+  Widget _buildFilterSection(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(top: 16.h, bottom: 8.h),
+      padding: EdgeInsets.all(12.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16.r),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadow, blurRadius: 10, offset: Offset(0, 2))
+        ],
+        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Attendence Records',
+                style: GoogleFonts.poppins(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              Icon(Icons.tune_rounded, color: AppColors.primary, size: 18.sp),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              _buildFilterTypeChip('weekly', 'Weekly'),
+              SizedBox(width: 8.w),
+              _buildFilterTypeChip('monthly', 'Monthly'),
+              SizedBox(width: 8.w),
+              _buildFilterTypeChip('yearly', 'Yearly'),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          _buildPeriodSelector(),
+        ],
+      ),
     );
   }
+
+  Widget _buildFilterTypeChip(String type, String label) {
+    final isActive = _filterType == type;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _filterType = type;
+          });
+        },
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 8.h),
+          decoration: BoxDecoration(
+            color: isActive ? AppColors.primary : Colors.grey[100],
+            borderRadius: BorderRadius.circular(10.r),
+            border: Border.all(
+              color: isActive ? AppColors.primary : Colors.transparent,
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(
+              fontSize: 12.sp,
+              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+              color: isActive ? Colors.white : AppColors.textSecondary,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPeriodSelector() {
+    if (_filterType == 'weekly') {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<WeekRange>(
+            value: _selectedWeek,
+            isExpanded: true,
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary, size: 20.sp),
+            items: _weeksList.map((week) {
+              return DropdownMenuItem<WeekRange>(
+                value: week,
+                child: Text(
+                  week.label,
+                  style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textPrimary),
+                ),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() {
+                  _selectedWeek = val;
+                });
+              }
+            },
+          ),
+        ),
+      );
+    } else if (_filterType == 'monthly') {
+      return Row(
+        children: [
+          Expanded(
+            flex: 2,
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _selectedMonth,
+                  isExpanded: true,
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary, size: 20.sp),
+                  items: _monthsList.map((month) {
+                    final monthName = DateFormat('MMMM').format(DateTime(2026, month, 1));
+                    return DropdownMenuItem<int>(
+                      value: month,
+                      child: Text(
+                        monthName,
+                        style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textPrimary),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedMonth = val;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+          SizedBox(width: 8.w),
+          Expanded(
+            child: Container(
+              padding: EdgeInsets.symmetric(horizontal: 12.w),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceVariant,
+                borderRadius: BorderRadius.circular(12.r),
+                border: Border.all(color: AppColors.border),
+              ),
+              child: DropdownButtonHideUnderline(
+                child: DropdownButton<int>(
+                  value: _selectedYear,
+                  isExpanded: true,
+                  icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary, size: 20.sp),
+                  items: _yearsList.map((year) {
+                    return DropdownMenuItem<int>(
+                      value: year,
+                      child: Text(
+                        '$year',
+                        style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textPrimary),
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (val) {
+                    if (val != null) {
+                      setState(() {
+                        _selectedYear = val;
+                      });
+                    }
+                  },
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    } else {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.symmetric(horizontal: 12.w),
+        decoration: BoxDecoration(
+          color: AppColors.surfaceVariant,
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: AppColors.border),
+        ),
+        child: DropdownButtonHideUnderline(
+          child: DropdownButton<int>(
+            value: _selectedYear,
+            isExpanded: true,
+            icon: Icon(Icons.keyboard_arrow_down_rounded, color: AppColors.textSecondary, size: 20.sp),
+            items: _yearsList.map((year) {
+              return DropdownMenuItem<int>(
+                value: year,
+                child: Text(
+                  '$year',
+                  style: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textPrimary),
+                ),
+              );
+            }).toList(),
+            onChanged: (val) {
+              if (val != null) {
+                setState(() {
+                  _selectedYear = val;
+                });
+              }
+            },
+          ),
+        ),
+      );
+    }
+  }
+
+  Widget _buildPeriodInsightsCard(EmployeeLeaveProvider leaveProv, EmployeeAttendanceProvider attendanceProv) {
+    final range = _getCurrentFilterRange();
+    final start = range['start']!;
+    final end = range['end']!;
+
+    // 1. Leave requests in period
+    final filteredRequests = leaveProv.requests.where((r) => _isLeaveInPeriod(r, start, end)).toList();
+    final filteredCompOffs = leaveProv.compOffCredits.where((c) => _isDutyReportInPeriod(c, start, end)).toList();
+
+    int pendingLeaves = filteredRequests.where((r) => r.status == 'pending').length;
+    int approvedLeaves = filteredRequests.where((r) => r.status == 'approved' || r.status == 'closed').length;
+    int rejectedLeaves = filteredRequests.where((r) => r.status == 'rejected').length;
+    double totalLeaveDays = filteredRequests.where((r) => r.status == 'approved' || r.status == 'closed').fold(0.0, (sum, r) => sum + r.days);
+
+    // 2. Attendance records in period
+    final filteredAttendance = attendanceProv.records.where((r) => _isAttendanceInPeriod(r, start, end)).toList();
+    
+    int presentDays = filteredAttendance.where((r) {
+      final s = r.status.toLowerCase();
+      return s == 'present' || s == 'late' || s == 'late in' || 
+             s == 'half day' || s == 'tour' || s == 'early out';
+    }).length;
+    
+    int lateDays = filteredAttendance.where((r) {
+      final s = r.status.toLowerCase();
+      return s == 'late' || s == 'late in';
+    }).length;
+
+    // Calculate absent count precisely
+    int absentDays = 0;
+    final now = DateTime.now();
+    final todayNoTime = DateTime(now.year, now.month, now.day);
+    
+    DateTime calcEnd = end.isBefore(todayNoTime) ? end : todayNoTime;
+    DateTime sDate = DateTime(start.year, start.month, start.day);
+    DateTime eDate = DateTime(calcEnd.year, calcEnd.month, calcEnd.day);
+    
+    final weekendDay = attendanceProv.weekend.toLowerCase();
+    
+    for (DateTime d = sDate; d.isBefore(eDate.add(const Duration(days: 1))); d = d.add(const Duration(days: 1))) {
+      final dayOfWeek = DateFormat('EEEE').format(d).toLowerCase();
+      final dateStr = DateFormat('yyyy-MM-dd').format(d);
+      
+      final isWeekend = dayOfWeek == weekendDay;
+      final isHoliday = attendanceProv.holidays.contains(dateStr);
+      
+      if (!isWeekend && !isHoliday) {
+        final record = attendanceProv.records.firstWhere(
+          (r) {
+            final rDate = _parseAnyDate(r.date);
+            if (rDate == null) return false;
+            return DateTime(rDate.year, rDate.month, rDate.day).isAtSameMomentAs(d);
+          },
+          orElse: () => const EmployeeAttendanceRecord(id: '', date: '', status: 'Absent'),
+        );
+        
+        if (record.id.isEmpty || record.status.toLowerCase() == 'absent') {
+          absentDays++;
+        }
+      }
+    }
+
+    String periodLabel = "";
+    if (_filterType == 'weekly') {
+      periodLabel = "Weekly Insights";
+    } else if (_filterType == 'monthly') {
+      periodLabel = "Insights for ${DateFormat('MMMM yyyy').format(start)}";
+    } else {
+      periodLabel = "Insights for $_selectedYear";
+    }
+
+    return Container(
+      margin: EdgeInsets.only(top: 8.h, bottom: 12.h),
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [AppColors.primary.withOpacity(0.05), AppColors.secondary.withOpacity(0.05)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(16.r),
+        border: Border.all(color: AppColors.primary.withOpacity(0.1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.analytics_outlined, color: AppColors.primary, size: 20.sp),
+              SizedBox(width: 8.w),
+              Text(
+                periodLabel,
+                style: GoogleFonts.poppins(
+                  fontSize: 14.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'ATTENDANCE',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.primary,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    _buildInsightRow(Icons.check_circle_rounded, 'Present', '$presentDays Days', AppColors.success),
+                    SizedBox(height: 6.h),
+                    _buildInsightRow(Icons.watch_later_rounded, 'Late In', '$lateDays Days', AppColors.warning),
+                    SizedBox(height: 6.h),
+                    _buildInsightRow(Icons.cancel_rounded, 'Absent', '$absentDays Days', AppColors.error),
+                  ],
+                ),
+              ),
+              Container(width: 1, height: 80.h, color: AppColors.border, margin: EdgeInsets.symmetric(horizontal: 12.w)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'LEAVES & DUTY',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10.sp,
+                        fontWeight: FontWeight.w800,
+                        color: AppColors.secondary,
+                        letterSpacing: 1.0,
+                      ),
+                    ),
+                    SizedBox(height: 8.h),
+                    _buildInsightRow(Icons.card_travel_rounded, 'Approved', '${totalLeaveDays % 1 == 0 ? totalLeaveDays.toInt() : totalLeaveDays} Days', AppColors.success),
+                    SizedBox(height: 6.h),
+                    _buildInsightRow(Icons.pending_actions_rounded, 'Pending', '$pendingLeaves', AppColors.warning),
+                    SizedBox(height: 6.h),
+                    _buildInsightRow(Icons.info_outline_rounded, 'Comp-Offs', '${filteredCompOffs.length}', Colors.orange),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInsightRow(IconData icon, String label, String value, Color color) {
+    return Row(
+      children: [
+        Icon(icon, color: color, size: 12.sp),
+        SizedBox(width: 4.w),
+        Expanded(
+          child: Text(
+            label,
+            style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textSecondary, fontWeight: FontWeight.w500),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        SizedBox(width: 4.w),
+        Text(
+          value,
+          style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textPrimary, fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+
+
+  Widget _buildTabSelector() {
+    return Container(
+      margin: EdgeInsets.only(top: 8.h, bottom: 8.h),
+      padding: EdgeInsets.all(4.r),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12.r),
+      ),
+      child: Row(
+        children: [
+          _buildTabItem(0, 'Leave History', Icons.event_note_rounded),
+          _buildTabItem(1, 'Attendance Logs', Icons.fingerprint_rounded),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabItem(int index, String label, IconData icon) {
+    final isActive = _activeTab == index;
+    return Expanded(
+      child: GestureDetector(
+        onTap: () {
+          setState(() {
+            _activeTab = index;
+          });
+        },
+        child: Container(
+          padding: EdgeInsets.symmetric(vertical: 10.h),
+          decoration: BoxDecoration(
+            color: isActive ? Colors.white : Colors.transparent,
+            borderRadius: BorderRadius.circular(10.r),
+            boxShadow: isActive
+                ? [BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 4, offset: const Offset(0, 2))]
+                : null,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 16.sp,
+                color: isActive ? AppColors.primary : AppColors.textSecondary,
+              ),
+              SizedBox(width: 8.w),
+              Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  color: isActive ? AppColors.primary : AppColors.textSecondary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabContent(BuildContext context, EmployeeLeaveProvider leaveProv, EmployeeAttendanceProvider attendanceProv) {
+    if (_activeTab == 0) {
+      return _buildLeaveHistoryFiltered(context, leaveProv);
+    } else {
+      return _buildAttendanceLogsFiltered(context, attendanceProv);
+    }
+  }
+
+  Widget _buildLeaveHistoryFiltered(BuildContext context, EmployeeLeaveProvider provider) {
+    final range = _getCurrentFilterRange();
+    final start = range['start']!;
+    final end = range['end']!;
+
+    final filteredRequests = provider.requests.where((r) => _isLeaveInPeriod(r, start, end)).toList();
+    final filteredCompOffs = provider.compOffCredits.where((c) => _isDutyReportInPeriod(c, start, end)).toList();
+
+    final allItems = [
+      ...filteredRequests,
+      ...filteredCompOffs,
+    ];
+
+    allItems.sort((a, b) {
+      final idAStr = (a is EmployeeLeaveRequest) ? a.id : (a as CompOffCredit).id;
+      final idBStr = (b is EmployeeLeaveRequest) ? b.id : (b as CompOffCredit).id;
+      final idAVal = int.tryParse(idAStr) ?? 0;
+      final idBVal = int.tryParse(idBStr) ?? 0;
+
+      if (idAVal != 0 && idBVal != 0) {
+        return idBVal.compareTo(idAVal);
+      }
+      return idBStr.compareTo(idAStr);
+    });
+
+    if (allItems.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24.0),
+        child: EmptyStateWidget(
+          icon: Icons.event_busy_rounded,
+          title: 'No Leave History',
+          subtitle: 'No leave requests or duty reports found for the selected period.',
+        ),
+      );
+    }
+
+    return Column(
+      children: allItems.map((item) {
+        if (item is EmployeeLeaveRequest) {
+          return _buildHistoryCard(context, item, provider);
+        } else {
+          return _buildDutyReportHistoryCard(context, item as CompOffCredit, provider);
+        }
+      }).toList(),
+    );
+  }
+
+  Widget _buildAttendanceLogsFiltered(BuildContext context, EmployeeAttendanceProvider provider) {
+    final range = _getCurrentFilterRange();
+    final start = range['start']!;
+    final end = range['end']!;
+
+    final filteredAttendance = provider.records.where((r) => _isAttendanceInPeriod(r, start, end)).toList();
+
+    if (filteredAttendance.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24.0),
+        child: EmptyStateWidget(
+          icon: Icons.fingerprint_rounded,
+          title: 'No Attendance Logs',
+          subtitle: 'No attendance records found for the selected period.',
+        ),
+      );
+    }
+
+    return Column(
+      children: filteredAttendance.map((record) {
+        Color statusColor = AppColors.error;
+        final s = record.status.toLowerCase();
+        if (s == 'present') {
+          statusColor = AppColors.success;
+        } else if (s == 'late' || s == 'late in') {
+          statusColor = AppColors.warning;
+        } else if (s == 'leave') {
+          statusColor = Colors.purple;
+        } else if (s == 'tour') {
+          statusColor = Colors.indigo;
+        } else if (s == 'half day') {
+          statusColor = Colors.blue;
+        }
+
+        return Container(
+          margin: EdgeInsets.only(bottom: 8.h),
+          padding: EdgeInsets.all(14.r),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(12.r),
+            border: Border.all(color: AppColors.border),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 4.w,
+                height: 40.h,
+                decoration: BoxDecoration(color: statusColor, borderRadius: BorderRadius.circular(2.r)),
+              ),
+              SizedBox(width: 12.w),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      record.date,
+                      style: GoogleFonts.poppins(fontSize: 13.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    ),
+                    if (record.checkIn != null)
+                      Text(
+                        'In: ${record.checkIn}  |  Out: ${record.checkOut ?? "Pending"}',
+                        style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textTertiary),
+                      )
+                    else
+                      Text(
+                        'No punches logged',
+                        style: GoogleFonts.poppins(fontSize: 11.sp, color: AppColors.textHint, fontStyle: FontStyle.italic),
+                      ),
+                    if (record.lateDuration != null && record.lateDuration!.isNotEmpty)
+                      Padding(
+                        padding: EdgeInsets.only(top: 2.h),
+                        child: Text(
+                          '⏰ Late by: ${record.lateDuration}',
+                          style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.warning),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(horizontal: 8.w, vertical: 3.h),
+                    decoration: BoxDecoration(color: statusColor.withOpacity(0.1), borderRadius: BorderRadius.circular(12.r)),
+                    child: Text(
+                      record.status,
+                      style: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: statusColor),
+                    ),
+                  ),
+                  if (record.workHours != null) ...[
+                    SizedBox(height: 4.h),
+                    Text(
+                      record.workHours!,
+                      style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.textTertiary),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+        );
+      }).toList(),
+    );
+  }
+
 
   Widget _buildDutyReportHistoryCard(BuildContext context, CompOffCredit report, EmployeeLeaveProvider provider) {
     final statusColor = report.status == 'approved' ? AppColors.success : report.status == 'pending' ? AppColors.warning : AppColors.error;
