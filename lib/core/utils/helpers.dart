@@ -48,10 +48,12 @@ class AppHelpers {
 
   // ─── Avatar Initials ──────────────────────────────────────────
   static String getInitials(String name) {
+    if (name.trim().isEmpty) return '';
     final parts = name.trim().split(' ');
-    if (parts.isEmpty) return '';
-    if (parts.length == 1) return parts[0][0].toUpperCase();
-    return (parts[0][0] + parts.last[0]).toUpperCase();
+    final activeParts = parts.where((p) => p.isNotEmpty).toList();
+    if (activeParts.isEmpty) return '';
+    if (activeParts.length == 1) return activeParts[0][0].toUpperCase();
+    return (activeParts[0][0] + activeParts.last[0]).toUpperCase();
   }
 
   // ─── Avatar Background Color ──────────────────────────────────

@@ -29,11 +29,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<EmployeeProvider>().loadEmployees();
-      context.read<AttendanceProvider>().loadAttendance();
-      context.read<LeaveProvider>().loadLeaves();
-    });
   }
 
   @override
@@ -90,21 +85,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   Widget _buildSliverHeader(AuthProvider auth) {
     return SliverAppBar(
-      expandedHeight: 160.h,
-      collapsedHeight: 70.h,
+      expandedHeight: 75.h,
+      collapsedHeight: 45.h,
       floating: false,
       pinned: true,
       elevation: 0,
       backgroundColor: AppColors.primary,
-      toolbarHeight: 70.h,
-      title: Text(
-        'Dashboard',
-        style: TextStyle(
-          fontSize: 18.sp,
-          fontWeight: FontWeight.w700,
-          color: Colors.white,
-        ),
-      ),
+      toolbarHeight: 45.h,
       centerTitle: false,
       flexibleSpace: FlexibleSpaceBar(
         collapseMode: CollapseMode.pin,
@@ -116,26 +103,33 @@ class _DashboardScreenState extends State<DashboardScreen> {
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: EdgeInsets.fromLTRB(
-                AppDimensions.paddingMD.w,
-                AppDimensions.paddingSM.h,
-                AppDimensions.paddingMD.w,
-                AppDimensions.paddingMD.h,
-              ),
+              padding: EdgeInsets.fromLTRB(20.w, 0, 20.w, 4.h),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'HRMIS',
-                        style: TextStyle(
-                          fontSize: 22.sp,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                          letterSpacing: 1.5,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              AppHelpers.getGreeting(),
+                              style: TextStyle(
+                                fontSize: 14.sp,
+                                color: Colors.white70,
+                              ),
+                            ),
+                            Text(
+                              auth.currentUser?.name ?? 'Admin',
+                              style: TextStyle(
+                                fontSize: 20.sp,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                       Row(
@@ -154,7 +148,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 auth.currentUser?.name ?? 'Admin',
                               ),
                               style: TextStyle(
-                                fontSize: 13.sp,
+                                fontSize: 12.sp,
                                 fontWeight: FontWeight.w700,
                                 color: Colors.white,
                               ),
@@ -163,22 +157,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                         ],
                       ),
                     ],
-                  ),
-                  SizedBox(height: 8.h),
-                  Text(
-                    AppHelpers.getGreeting(),
-                    style: TextStyle(
-                      fontSize: 13.sp,
-                      color: Colors.white70,
-                    ),
-                  ),
-                  Text(
-                    auth.currentUser?.name ?? 'Administrator',
-                    style: TextStyle(
-                      fontSize: 18.sp,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
                   ),
                 ],
               ),

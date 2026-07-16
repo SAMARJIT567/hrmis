@@ -391,14 +391,15 @@ class _EmployeeDetailsSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final screenHeight = MediaQuery.of(context).size.height;
     return Container(
+      height: screenHeight * 0.8,
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.vertical(top: Radius.circular(30.r)),
       ),
-      padding: EdgeInsets.symmetric(horizontal: 24.w, vertical: 12.h),
+      padding: EdgeInsets.fromLTRB(24.w, 12.h, 24.w, 24.h),
       child: Column(
-        mainAxisSize: MainAxisSize.min,
         children: [
           Container(
             width: 40.w,
@@ -409,156 +410,236 @@ class _EmployeeDetailsSheet extends StatelessWidget {
             ),
           ),
           SizedBox(height: 24.h),
-          Row(
-            children: [
-              Container(
-                width: 60.w,
-                height: 60.h,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(18.r),
-                  image: record.employeeImage != null
-                      ? DecorationImage(
-                          image: NetworkImage(record.employeeImage!),
-                          fit: BoxFit.cover,
-                        )
-                      : null,
-                  color: AppHelpers.getAvatarColor(record.employeeName),
-                ),
-                child: record.employeeImage == null
-                    ? Center(
+          Expanded(
+            child: SingleChildScrollView(
+              physics: const BouncingScrollPhysics(),
+              child: Column(
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        width: 60.w,
+                        height: 60.h,
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18.r),
+                          image: record.employeeImage != null
+                              ? DecorationImage(
+                                  image: NetworkImage(record.employeeImage!),
+                                  fit: BoxFit.cover,
+                                )
+                              : null,
+                          color: AppHelpers.getAvatarColor(record.employeeName),
+                        ),
+                        child: record.employeeImage == null
+                            ? Center(
+                                child: Text(
+                                  AppHelpers.getInitials(record.employeeName),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 20.sp,
+                                    fontWeight: FontWeight.w700,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              )
+                            : null,
+                      ),
+                      SizedBox(width: 16.w),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              record.employeeName,
+                              style: GoogleFonts.poppins(
+                                fontSize: 18.sp,
+                                fontWeight: FontWeight.w700,
+                                color: AppColors.textPrimary,
+                              ),
+                            ),
+                            Text(
+                              '${record.department} • ${record.employeeId}',
+                              style: GoogleFonts.poppins(
+                                fontSize: 12.sp,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
+                        decoration: BoxDecoration(
+                          color: AppHelpers.getAttendanceColor(record.status).withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(20.r),
+                        ),
                         child: Text(
-                          AppHelpers.getInitials(record.employeeName),
+                          record.status.toUpperCase(),
                           style: GoogleFonts.poppins(
-                            fontSize: 20.sp,
+                            fontSize: 11.sp,
                             fontWeight: FontWeight.w700,
-                            color: Colors.white,
+                            color: AppHelpers.getAttendanceColor(record.status),
                           ),
                         ),
-                      )
-                    : null,
-              ),
-              SizedBox(width: 16.w),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      record.employeeName,
-                      style: GoogleFonts.poppins(
-                        fontSize: 18.sp,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textPrimary,
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 30.h),
+                  _buildInfoRow(
+                    Icons.calendar_today_rounded,
+                    'Date',
+                    record.date == 'Today' ? DateFormat('dd MMM yyyy').format(DateTime.now()) : record.date,
+                  ),
+                  SizedBox(height: 20.h),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildTimeInfo(
+                          Icons.login_rounded,
+                          'Check In',
+                          record.checkIn ?? '--:--',
+                          AppColors.success,
+                        ),
+                      ),
+                      SizedBox(width: 16.w),
+                      Expanded(
+                        child: _buildTimeInfo(
+                          Icons.logout_rounded,
+                          'Check Out',
+                          record.checkOut ?? (record.checkIn != null ? 'Pending' : '--:--'),
+                          record.checkOut != null ? AppColors.error : AppColors.warning,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (record.checkInSelfie != null) ...[
+                    SizedBox(height: 24.h),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Check-in Selfie',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
                       ),
                     ),
-                    Text(
-                      '${record.department} • ${record.employeeId}',
-                      style: GoogleFonts.poppins(
-                        fontSize: 12.sp,
-                        color: AppColors.textSecondary,
+                    SizedBox(height: 12.h),
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          PageRouteBuilder(
+                            opaque: false,
+                            barrierColor: Colors.black,
+                            pageBuilder: (context, _, __) => _FullscreenImageViewer(
+                              imageUrl: record.checkInSelfie!,
+                            ),
+                          ),
+                        );
+                      },
+                      child: Hero(
+                        tag: record.checkInSelfie!,
+                        child: Container(
+                          height: 180.h,
+                          width: double.infinity,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20.r),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.1),
+                                blurRadius: 10,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                            image: DecorationImage(
+                              image: NetworkImage(record.checkInSelfie!),
+                              fit: BoxFit.cover,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                   ],
-                ),
-              ),
-              Container(
-                padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 6.h),
-                decoration: BoxDecoration(
-                  color: AppHelpers.getAttendanceColor(record.status).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20.r),
-                ),
-                child: Text(
-                  record.status.toUpperCase(),
-                  style: GoogleFonts.poppins(
-                    fontSize: 11.sp,
-                    fontWeight: FontWeight.w700,
-                    color: AppHelpers.getAttendanceColor(record.status),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: 30.h),
-          _buildInfoRow(
-            Icons.calendar_today_rounded,
-            'Date',
-            record.date == 'Today' ? DateFormat('dd MMM yyyy').format(DateTime.now()) : record.date,
-          ),
-          SizedBox(height: 20.h),
-          Row(
-            children: [
-              Expanded(
-                child: _buildTimeInfo(
-                  Icons.login_rounded,
-                  'Check In',
-                  record.checkIn ?? '--:--',
-                  AppColors.success,
-                ),
-              ),
-              SizedBox(width: 16.w),
-              Expanded(
-                child: _buildTimeInfo(
-                  Icons.logout_rounded,
-                  'Check Out',
-                  record.checkOut ?? (record.checkIn != null ? 'Pending' : '--:--'),
-                  record.checkOut != null ? AppColors.error : AppColors.warning,
-                ),
-              ),
-            ],
-          ),
-          if (record.checkInSelfie != null) ...[
-            SizedBox(height: 24.h),
-            Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                'Check-in Selfie',
-                style: GoogleFonts.poppins(
-                  fontSize: 14.sp,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textPrimary,
-                ),
-              ),
-            ),
-            SizedBox(height: 12.h),
-            Container(
-              height: 180.h,
-              width: double.infinity,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(20.r),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
+                  if (record.checkInLocation != null) ...[
+                    SizedBox(height: 24.h),
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        'Check-in Location',
+                        style: GoogleFonts.poppins(
+                          fontSize: 14.sp,
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textPrimary,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: 12.h),
+                    Container(
+                      padding: EdgeInsets.all(16.r),
+                      decoration: BoxDecoration(
+                        color: AppColors.surface,
+                        borderRadius: BorderRadius.circular(20.r),
+                        border: Border.all(color: AppColors.border, width: 0.8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppColors.shadow,
+                            blurRadius: 12,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(12.r),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.08),
+                              borderRadius: BorderRadius.circular(14.r),
+                            ),
+                            child: Icon(
+                              Icons.location_on_rounded,
+                              size: 24.sp,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          SizedBox(width: 16.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  record.checkInLocation!,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 13.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                if (record.latitude != null && record.longitude != null) ...[
+                                  SizedBox(height: 4.h),
+                                  Text(
+                                    'Coordinates: ${record.latitude!.toStringAsFixed(6)}, ${record.longitude!.toStringAsFixed(6)}',
+                                    style: GoogleFonts.poppins(
+                                      fontSize: 11.sp,
+                                      fontWeight: FontWeight.w500,
+                                      color: AppColors.textSecondary,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: 20.h),
                 ],
-                image: DecorationImage(
-                  image: NetworkImage(record.checkInSelfie!),
-                  fit: BoxFit.cover,
-                ),
               ),
             ),
-          ],
-          if (record.checkInLocation != null) ...[
-            SizedBox(height: 20.h),
-            _buildInfoRow(
-              Icons.location_on_rounded,
-              'Check-in Location',
-              record.checkInLocation!,
-            ),
-            if (record.latitude != null && record.longitude != null)
-              Padding(
-                padding: EdgeInsets.only(left: 42.w, top: 4.h),
-                child: Text(
-                  'Lat: ${record.latitude}, Lng: ${record.longitude}',
-                  style: GoogleFonts.poppins(
-                    fontSize: 11.sp,
-                    color: AppColors.textSecondary,
-                    fontStyle: FontStyle.italic,
-                  ),
-                ),
-              ),
-          ],
-          SizedBox(height: 32.h),
+          ),
+          SizedBox(height: 16.h),
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
@@ -576,7 +657,6 @@ class _EmployeeDetailsSheet extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(height: 20.h),
         ],
       ),
     );
@@ -650,6 +730,72 @@ class _EmployeeDetailsSheet extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FullscreenImageViewer extends StatefulWidget {
+  final String imageUrl;
+  const _FullscreenImageViewer({required this.imageUrl});
+
+  @override
+  State<_FullscreenImageViewer> createState() => _FullscreenImageViewerState();
+}
+
+class _FullscreenImageViewerState extends State<_FullscreenImageViewer> {
+  final TransformationController _transformationController = TransformationController();
+  TapDownDetails? _doubleTapDetails;
+
+  void _handleDoubleTap() {
+    if (_transformationController.value != Matrix4.identity()) {
+      _transformationController.value = Matrix4.identity();
+    } else {
+      final position = _doubleTapDetails!.localPosition;
+      _transformationController.value = Matrix4.identity()
+        ..translate(-position.dx * 1.5, -position.dy * 1.5)
+        ..scale(2.5);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.black,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.close, color: Colors.white),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
+      body: Center(
+        child: GestureDetector(
+          onDoubleTapDown: (details) => _doubleTapDetails = details,
+          onDoubleTap: _handleDoubleTap,
+          child: InteractiveViewer(
+            transformationController: _transformationController,
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Hero(
+              tag: widget.imageUrl,
+              child: Image.network(
+                widget.imageUrl,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(child: CircularProgressIndicator(color: Colors.white));
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return const Center(
+                    child: Icon(Icons.broken_image, color: Colors.white54, size: 64),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

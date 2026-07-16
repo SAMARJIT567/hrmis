@@ -122,7 +122,7 @@ class EmployeeLeaveProvider extends ChangeNotifier {
       return LeaveBalance(
         type: policy.title,
         total: total,
-        used: _calculateUsed(policy.title),
+        used: policy.usedDays,
         color: Color(policy.colorValue),
         icon: AppHelpers.getLeaveIcon(policy.iconName),
       );
@@ -212,31 +212,26 @@ class EmployeeLeaveProvider extends ChangeNotifier {
   }) async {
     _isSubmitting = true;
     notifyListeners();
-    await Future.delayed(const Duration(seconds: 1));
 
     final days = customDays ?? (toDate.difference(fromDate).inDays + 1).toDouble();
-    final requestId = DateTime.now().millisecondsSinceEpoch.toString();
-    final appliedOn = DateFormat('dd MMM yyyy').format(DateTime.now());
+    final fromDateStr = DateFormat('yyyy-MM-dd').format(fromDate);
+    final toDateStr = DateFormat('yyyy-MM-dd').format(toDate);
 
-    final newGlobalRequest = LeaveRequest(
-      id: requestId,
-      employeeId: user?.id ?? 'EMP001',
-      employeeName: user?.name ?? 'Rahul Sharma',
-      department: user?.department ?? 'Engineering',
+    final bool success = await globalProvider.applyLeave(
       leaveType: leaveType,
-      fromDate: DateFormat('dd MMM yyyy').format(fromDate),
-      toDate: DateFormat('dd MMM yyyy').format(toDate),
-      days: days,
+      fromDate: fromDateStr,
+      toDate: toDateStr,
       reason: reason,
-      status: 'pending',
-      appliedOn: appliedOn,
+      days: days,
     );
 
-    await globalProvider.addLeaveRequest(newGlobalRequest);
+    if (success) {
+      syncWithGlobal(globalProvider);
+    }
     
     _isSubmitting = false;
     notifyListeners();
-    return true;
+    return success;
   }
 
   Future<bool> logHolidayDuty({
@@ -559,11 +554,17 @@ class _EmployeeLeaveScreenState extends State<EmployeeLeaveScreen> {
           ...provider.compOffCredits,
         ];
 
-        // Sort by timestamp (id) descending
+        // Sort: newest ID (numeric) descending so latest is at the top
         allItems.sort((a, b) {
-          String idA = (a is EmployeeLeaveRequest) ? a.id : (a as CompOffCredit).id;
-          String idB = (b is EmployeeLeaveRequest) ? b.id : (b as CompOffCredit).id;
-          return idB.compareTo(idA);
+          final idAStr = (a is EmployeeLeaveRequest) ? a.id : (a as CompOffCredit).id;
+          final idBStr = (b is EmployeeLeaveRequest) ? b.id : (b as CompOffCredit).id;
+          final idAVal = int.tryParse(idAStr) ?? 0;
+          final idBVal = int.tryParse(idBStr) ?? 0;
+
+          if (idAVal != 0 && idBVal != 0) {
+            return idBVal.compareTo(idAVal);
+          }
+          return idBStr.compareTo(idAStr);
         });
 
         if (allItems.isEmpty) return const EmptyStateWidget(icon: Icons.event_busy_rounded, title: 'No History', subtitle: 'Your leave history and duty reports will appear here.');
@@ -812,14 +813,14 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
   String? _validateMaternityLeaveRules(AuthUser? user) {
     if (_selectedLeaveType != 'Maternity Leave') return null;
     if (user == null || user.gender != 'Female') return 'Applicable for Female employees only.';
-    if (user.survivingChildren >= 2 && !_isMiscarriage) return 'Maternity Leave is only for the first two surviving children.';
+    if ((user.survivingChildren ?? 0) >= 2 && !_isMiscarriage) return 'Maternity Leave is only for the first two surviving children.';
     return null;
   }
 
   String? _validatePaternityLeaveRules(DateTime start, AuthUser? user) {
     if (_selectedLeaveType != 'Paternity Leave') return null;
     if (user == null || user.gender != 'Male') return 'Applicable for Male employees only.';
-    if (user.survivingChildren >= 2) return 'Paternity Leave is only for the first two surviving children.';
+    if ((user.survivingChildren ?? 0) >= 2) return 'Paternity Leave is only for the first two surviving children.';
     if (_deliveryDate == null) return 'Please select the Delivery Date.';
     final minDate = _deliveryDate!.subtract(const Duration(days: 15));
     final maxDate = _deliveryDate!.add(const Duration(days: 180));
@@ -1286,8 +1287,13 @@ class _LeaveApplySheetState extends State<LeaveApplySheet> {
             return; 
           } 
 
+          final selectedPolicyId = globalLeaveProvider.policies.firstWhere(
+            (p) => p.title == _selectedLeaveType || p.id == _selectedLeaveType,
+            orElse: () => const LeavePolicy(id: 'CL', title: '', description: '', totalDays: 0, usedDays: 0, iconName: '', colorValue: 0),
+          ).id;
+
           if (await provider.applyLeave(
-            leaveType: _selectedLeaveType!, 
+            leaveType: selectedPolicyId, 
             fromDate: _fromDate, 
             toDate: effectiveToDate, 
             reason: _reasonController.text.trim() +

@@ -74,9 +74,18 @@ class LeaveBalanceScreen extends StatelessWidget {
   }
 
   Widget _buildBalanceHeader(LeaveProvider prov) {
-    final cl = prov.policies.firstWhere((p) => p.id == 'CL', orElse: () => prov.policies[0]);
-    final sl = prov.policies.firstWhere((p) => p.id == 'SL', orElse: () => prov.policies[1]);
-    final el = prov.policies.firstWhere((p) => p.id == 'EL', orElse: () => prov.policies[2]);
+    final cl = prov.policies.firstWhere(
+      (p) => p.id.toUpperCase() == 'CL', 
+      orElse: () => prov.policies.isNotEmpty ? prov.policies[0] : const LeavePolicy(id: 'CL', title: 'Casual Leave', description: '', totalDays: 0, usedDays: 0, iconName: '', colorValue: 0),
+    );
+    final sl = prov.policies.firstWhere(
+      (p) => p.id.toUpperCase() == 'SL' || p.id.toUpperCase() == 'COL' || p.id.toUpperCase() == 'HPL', 
+      orElse: () => prov.policies.length > 1 ? prov.policies[1] : const LeavePolicy(id: 'SL', title: 'Sick Leave', description: '', totalDays: 0, usedDays: 0, iconName: '', colorValue: 0),
+    );
+    final el = prov.policies.firstWhere(
+      (p) => p.id.toUpperCase() == 'EL', 
+      orElse: () => prov.policies.length > 2 ? prov.policies[2] : const LeavePolicy(id: 'EL', title: 'Earned Leave', description: '', totalDays: 0, usedDays: 0, iconName: '', colorValue: 0),
+    );
     
     int totalAvailable = 0;
     for (var p in prov.policies) {

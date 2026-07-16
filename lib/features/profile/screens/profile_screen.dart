@@ -13,6 +13,7 @@ import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:provider/provider.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart';
 
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_dimensions.dart';
@@ -44,6 +45,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
   void initState() {
     super.initState();
     _loadProfileImage();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<AuthProvider>().fetchProfile();
+    });
   }
 
   void _loadProfileImage() async {
@@ -209,7 +213,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  // ✅ FIXED: Helper to convert base64 string to Uint8List
+  // FIXED: Helper to convert base64 string to Uint8List
   Uint8List _base64ToBytes(String base64String) {
     try {
       // Remove data:image/jpeg;base64, prefix if present
@@ -250,29 +254,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _buildInfoCard(user),
                 SizedBox(height: 20.h),
 
-                _sectionLabel('Account'),
+                 _sectionLabel('Account'),
                 SizedBox(height: 8.h),
                 _buildSettingsCard([
-                  _SettingItem(
-                    Icons.edit_outlined,
-                    'Edit Profile',
-                    AppColors.primary,
-                    () => _startEditing(user!),
-                  ),
-                  _SettingItem(Icons.lock_outline, 'Change Password', AppColors.secondary, () {}),
-                  _SettingItem(Icons.notifications_none, 'Notifications', AppColors.warning, () {}),
                   _SettingItem(Icons.account_balance_wallet_outlined, 'Leave Balance', AppColors.success, () {
                     Navigator.pushNamed(context, '/leave-balance');
                   }),
-                ]),
-                SizedBox(height: 20.h),
-
-                _sectionLabel('App'),
-                SizedBox(height: 8.h),
-                _buildSettingsCard([
-                  _SettingItem(Icons.language, 'Language', AppColors.info, () {}),
-                  _SettingItem(Icons.dark_mode_outlined, 'Appearance', AppColors.textSecondary, () {}),
-                  _SettingItem(Icons.help_outline, 'Help & Support', AppColors.success, () {}),
                 ]),
                 SizedBox(height: 20.h),
 
@@ -280,7 +267,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _sectionLabel('Administration', isAdminSection: true),
                   SizedBox(height: 8.h),
                   _buildSettingsCard([
-                    _SettingItem(Icons.people_alt, 'Manage Users', AppColors.primary, () {}),
                     _SettingItem(
                       Icons.business,
                       'Company Settings',
@@ -290,8 +276,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                         MaterialPageRoute(builder: (_) => const OfficeSettingsScreen()),
                       ),
                     ),
-                    _SettingItem(Icons.backup, 'Backup & Restore', AppColors.primary, () {}),
-                    _SettingItem(Icons.info_outline, 'System Logs', AppColors.textTertiary, () {}),
                   ]),
                   SizedBox(height: 20.h),
                 ],
@@ -430,47 +414,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
       ),
       child: Column(
         children: [
-          GestureDetector(
-            onTap: _showImagePickerOptions,
-            child: Container(
-              width: 88.w,
-              height: 88.h,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: AppColors.primaryGradient,
-                border: Border.all(color: Colors.white.withOpacity(0.5), width: 3),
-              ),
-              child: ClipOval(
-                child: _profileImageBase64 != null && _profileImageBase64!.isNotEmpty
-                    ? Image.memory(
-                        _base64ToBytes(_profileImageBase64!),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => _buildAvatarPlaceholder(user),
-                      )
-                    : _buildAvatarPlaceholder(user),
-              ),
+          Container(
+            width: 88.w,
+            height: 88.h,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: AppColors.primaryGradient,
+              border: Border.all(color: Colors.white.withOpacity(0.5), width: 3),
             ),
-          ),
-          SizedBox(height: 12.h),
-          GestureDetector(
-            onTap: _showImagePickerOptions,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 12.w, vertical: 4.h),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(20.r),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.camera_alt, size: 12.sp, color: Colors.white70),
-                  SizedBox(width: 4.w),
-                  Text(
-                    'Change Photo',
-                    style: TextStyle(fontSize: 10.sp, color: Colors.white70),
-                  ),
-                ],
-              ),
+            child: ClipOval(
+              child: _profileImageBase64 != null && _profileImageBase64!.isNotEmpty
+                  ? Image.memory(
+                      _base64ToBytes(_profileImageBase64!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => _buildAvatarPlaceholder(user),
+                    )
+                  : _buildAvatarPlaceholder(user),
             ),
           ),
           SizedBox(height: 16.h),
@@ -497,23 +456,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 Icon(AppHelpers.getDepartmentIcon(user?.department ?? ''), size: 14.sp, color: Colors.white70),
                 SizedBox(width: 6.w),
                 Text(
-                  user?.department ?? 'Department',
+                  user?.department.isNotEmpty == true ? user!.department : 'General Department',
                   style: TextStyle(fontSize: 12.sp, fontWeight: FontWeight.w500, color: Colors.white),
                 ),
               ],
-            ),
-          ),
-          SizedBox(height: 12.h),
-          Container(
-            padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 4.h),
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.2),
-              borderRadius: BorderRadius.circular(20.r),
-              border: Border.all(color: Colors.white38),
-            ),
-            child: Text(
-              (user?.role ?? 'employee').toUpperCase(),
-              style: TextStyle(fontSize: 11.sp, fontWeight: FontWeight.w600, color: Colors.white, letterSpacing: 1.2),
             ),
           ),
         ],
@@ -534,8 +480,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildInfoCard(AuthUser? user) {
-    final employeeId = user?.id ?? 'EMP001';
-    final joiningDate = _getJoiningDate(user?.id);
+    final employeeId = user?.empCode.isNotEmpty == true ? user!.empCode : (user?.id ?? 'EMP001');
+    
+    String joiningDate = 'N/A';
+    if (user?.joiningDate != null && user!.joiningDate!.isNotEmpty) {
+      try {
+        final parsed = DateTime.parse(user.joiningDate!);
+        joiningDate = DateFormat('MMM yyyy').format(parsed);
+      } catch (_) {
+        joiningDate = user.joiningDate!;
+      }
+    }
+
+    final empType = user?.employeeType ?? 'Permanent';
 
     return Container(
       padding: EdgeInsets.all(AppDimensions.paddingMD.r),
@@ -552,7 +509,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _InfoDivider(),
           _InfoChip(Icons.calendar_today, joiningDate, 'Joined'),
           _InfoDivider(),
-          _InfoChip(Icons.work_outline, user?.role ?? 'Employee', 'Role'),
+          _InfoChip(Icons.work_outline, empType, 'Employee Type'),
         ],
       ),
     );

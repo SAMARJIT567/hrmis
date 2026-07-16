@@ -147,14 +147,6 @@ class _SplashScreenState extends State<SplashScreen>
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(3, (i) => _buildDot(i)),
                       ),
-                      SizedBox(height: 32.h),
-                      Text(
-                        AppStrings.companyName,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12.sp,
-                          color: Colors.white.withOpacity(0.6),
-                        ),
-                      ),
                       SizedBox(height: 20.h),
                     ],
                   ),

@@ -8,23 +8,17 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:convert';
 import '../models/leave_model.dart';
+import '../../../core/services/api_service.dart';
 
 class LeaveProvider extends ChangeNotifier {
+  final ApiService _apiService = ApiService();
   List<LeaveRequest> _all = [];
   List<LeaveRequest> _filtered = [];
   List<CompOffCredit> _compOffReports = [];
   bool _isLoading = false;
   String _filter = 'All';
 
-  List<LeavePolicy> _policies = [
-    const LeavePolicy(id: 'CL', title: 'Casual Leave', description: 'Assam Govt: 12 days/year. No carry forward. Not a regular leave. Cannot be clubbed with EL/Medical. Sundays/Holidays in between are NOT counted.', totalDays: 12, usedDays: 0, iconName: 'event_note_rounded', colorValue: 0xFF1E40AF),
-    const LeavePolicy(id: 'COL', title: 'Commuted Leave', description: 'Medical ground leave with Full Pay. Note: 1 day Commuted Leave = 2 days HPL deduction. Medical certificate mandatory.', totalDays: 120, usedDays: 0, iconName: 'medical_services_outlined', colorValue: 0xFFEF4444),
-    const LeavePolicy(id: 'HPL', title: 'Half Pay Leave', description: 'Earned at 20 days/year. Provides Half Salary. Can be converted to Commuted Leave for Full Pay (2:1 ratio).', totalDays: 60, usedDays: 0, iconName: 'history_edu_rounded', colorValue: 0xFFF59E0B),
-    const LeavePolicy(id: 'EL', title: 'Earned Leave', description: 'Assam Govt Rules: 30 days/year (15+15 credit). Max 300 days accumulation. Sandwich rule applies. No clubbing with CL.', totalDays: 30, usedDays: 0, iconName: 'beach_access_rounded', colorValue: 0xFF10B981),
-    const LeavePolicy(id: 'ML', title: 'Maternity Leave', description: 'Paid leave for expecting mothers (continuous block).', totalDays: 182, usedDays: 0, iconName: 'pregnant_woman_rounded', colorValue: 0xFF7C3AED),
-    const LeavePolicy(id: 'PL', title: 'Paternity Leave', description: 'Granted to male employees around spouse delivery.', totalDays: 15, usedDays: 0, iconName: 'child_care_rounded', colorValue: 0xFF0EA5E9),
-    const LeavePolicy(id: 'CO', title: 'Compensatory Leave', description: 'Credit for working on holidays or weekly off days.', totalDays: 0, usedDays: 0, iconName: 'celebration_rounded', colorValue: 0xFFF59E0B),
-  ];
+  List<LeavePolicy> _policies = [];
 
   List<LeaveRequest> get requests => _filtered;
   List<LeaveRequest> get allRequests => _all;
@@ -217,11 +211,83 @@ class LeaveProvider extends ChangeNotifier {
   Future<void> loadLeaves() async {
     _isLoading = true;
     notifyListeners();
-    await Future.delayed(const Duration(milliseconds: 400));
-    if (_all.isEmpty) {
-      _all = List.from(LeaveMockData.requests);
-      _applyFilter();
+
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('user_data');
+    bool isAdmin = true;
+    if (userJson != null) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(userJson);
+        isAdmin = data['role']?.toString().toLowerCase() == 'admin';
+      } catch (_) {}
     }
+
+    if (isAdmin) {
+      _all = List.from(LeaveMockData.requests);
+    } else {
+      try {
+        final response = await _apiService.getLeaves();
+        
+        // Parse leave availability / policies dynamically from Laravel
+        if (response['leave_availability'] != null) {
+          final List<dynamic> availabilityList = response['leave_availability'];
+          _policies = availabilityList.map((item) {
+            final leaveType = item['leave_type'];
+            final id = item['leave_type_id']?.toString() ?? '';
+            final title = leaveType?['name']?.toString() ?? id;
+            final total = (item['available_count'] as num?)?.toInt() ?? 0;
+            final used = (item['used_count'] as num?)?.toInt() ?? 0;
+
+            String description = 'Available Limit: $total days.';
+            if (id == 'CL') {
+              description = 'Assam Govt: 12 days/year. No carry forward. Not a regular leave. Cannot be clubbed with EL/Medical. Sundays/Holidays in between are NOT counted.';
+            } else if (id == 'COL') {
+              description = 'Medical ground leave with Full Pay. Note: 1 day Commuted Leave = 2 days HPL deduction. Medical certificate mandatory.';
+            } else if (id == 'HPL') {
+              description = 'Earned at 20 days/year. Provides Half Salary. Can be converted to Commuted Leave for Full Pay (2:1 ratio).';
+            } else if (id == 'EL') {
+              description = 'Assam Govt Rules: 30 days/year (15+15 credit). Max 300 days accumulation. Sandwich rule applies. No clubbing with CL.';
+            }
+
+            String iconName = 'event_note_rounded';
+            int colorValue = 0xFF1E40AF;
+            if (id == 'CL') { iconName = 'event_note_rounded'; colorValue = 0xFF1E40AF; }
+            else if (id == 'COL') { iconName = 'medical_services_outlined'; colorValue = 0xFFEF4444; }
+            else if (id == 'HPL') { iconName = 'history_edu_rounded'; colorValue = 0xFFF59E0B; }
+            else if (id == 'EL') { iconName = 'beach_access_rounded'; colorValue = 0xFF10B981; }
+            else if (id == 'ML') { iconName = 'pregnant_woman_rounded'; colorValue = 0xFF7C3AED; }
+            else if (id == 'PL') { iconName = 'child_care_rounded'; colorValue = 0xFF0EA5E9; }
+
+            return LeavePolicy(
+              id: id,
+              title: title,
+              description: description,
+              totalDays: total,
+              usedDays: used,
+              iconName: iconName,
+              colorValue: colorValue,
+            );
+          }).toList();
+        }
+
+        // Parse requests/applications
+        final List<dynamic>? myApps = response['my_applications'];
+        final List<dynamic>? otherApps = response['other_employee_applications'];
+        
+        if (myApps != null) {
+          _all = myApps.map((json) => LeaveRequest.fromJson(json as Map<String, dynamic>)).toList();
+        } else if (otherApps != null) {
+          _all = otherApps.map((json) => LeaveRequest.fromJson(json as Map<String, dynamic>)).toList();
+        } else {
+          _all = [];
+        }
+      } catch (e) {
+        debugPrint('❌ Error loading leaves: $e');
+        _all = [];
+      }
+    }
+
+    _applyFilter();
     _isLoading = false;
     notifyListeners();
   }
@@ -267,6 +333,50 @@ class LeaveProvider extends ChangeNotifier {
       _applyFilter();
       notifyListeners();
       await _saveRequests();
+    }
+  }
+
+  Future<bool> applyLeave({
+    required String leaveType,
+    required String fromDate,
+    required String toDate,
+    required String reason,
+    double? days,
+  }) async {
+    _isLoading = true;
+    notifyListeners();
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final userJson = prefs.getString('user_data');
+      String employeeId = '';
+      if (userJson != null) {
+        final Map<String, dynamic> data = jsonDecode(userJson);
+        employeeId = data['id']?.toString() ?? '';
+      }
+
+      final response = await _apiService.applyLeave(
+        employeeId: employeeId,
+        leaveType: leaveType,
+        formDate: fromDate,
+        toDate: toDate,
+        reason: reason,
+        days: days,
+      );
+
+      final msg = response['message']?.toString().toLowerCase() ?? '';
+      final status = response['status']?.toString().toLowerCase() ?? '';
+      
+      if (msg.contains('saved') || msg.contains('success') || status == 'success') {
+        await loadLeaves(); // Reload to fetch the new leave record
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('❌ Error applying leave to Laravel backend: $e');
+      return false;
+    } finally {
+      _isLoading = false;
+      notifyListeners();
     }
   }
 }

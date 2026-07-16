@@ -8,6 +8,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/office_settings_model.dart';
+import '../../../core/services/api_service.dart';
 
 class OfficeSettingsProvider extends ChangeNotifier {
   OfficeSettings _settings = OfficeSettings.defaultSettings;
@@ -50,5 +51,24 @@ class OfficeSettingsProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('Error saving settings: $e');
     }
+  }
+
+  // ─── HARDCODED TEST COORDINATES ──────────────────────────────
+  // You can change these coordinates to test geofencing easily!
+  static const double targetLatitude = 26.2486526; 
+  static const double targetLongitude = 91.5086447; 
+  static const double targetRadius = 200.0;     // Radius in meters
+
+  Future<void> fetchOfficeSettings() async {
+    // Always use these hardcoded coordinates for both Admin and Employee
+    _settings = _settings.copyWith(
+      officeName: 'GMDA Office',
+      latitude: targetLatitude,
+      longitude: targetLongitude,
+      allowedRadiusMeters: targetRadius,
+      id: 'hardcoded_test_id',
+    );
+    notifyListeners();
+    await saveSettings();
   }
 }

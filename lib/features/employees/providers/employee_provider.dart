@@ -5,7 +5,10 @@
 // ============================================================
 
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import '../models/employee_model.dart';
+import '../../../core/services/api_service.dart';
 
 class EmployeeProvider extends ChangeNotifier {
   List<Employee> _allEmployees = [];
@@ -15,7 +18,11 @@ class EmployeeProvider extends ChangeNotifier {
   String _selectedDept = 'All';
   String _selectedStatus = 'All';
 
-  List<Employee> get employees => _filteredList;
+  // ─── Pagination ──────────────────────────────────────────────
+  int _visibleCount = 15;
+  bool get hasMore => _visibleCount < _filteredList.length;
+
+  List<Employee> get employees => _filteredList.take(_visibleCount).toList();
   List<Employee> get allEmployees => _allEmployees;
   bool get isLoading => _isLoading;
   String get searchQuery => _searchQuery;
@@ -42,13 +49,39 @@ class EmployeeProvider extends ChangeNotifier {
     loadEmployees();
   }
 
+  final ApiService _apiService = ApiService();
+
   Future<void> loadEmployees() async {
     _isLoading = true;
     notifyListeners();
 
-    await Future.delayed(const Duration(milliseconds: 500));
+    final prefs = await SharedPreferences.getInstance();
+    final userJson = prefs.getString('user_data');
+    bool isAdmin = true;
+    if (userJson != null) {
+      try {
+        final Map<String, dynamic> data = jsonDecode(userJson);
+        isAdmin = data['role']?.toString().toLowerCase() == 'admin';
+      } catch (_) {}
+    }
 
-    _allEmployees = List.from(EmployeeMockData.employees);
+    if (isAdmin) {
+      _allEmployees = List.from(EmployeeMockData.employees);
+    } else {
+      try {
+        final response = await _apiService.getEmployees();
+        if (response['status'] == 'success' && response['data'] != null) {
+          final List<dynamic> data = response['data'];
+          _allEmployees = data.map((json) => Employee.fromJson(json as Map<String, dynamic>)).toList();
+        } else {
+          _allEmployees = List.from(EmployeeMockData.employees);
+        }
+      } catch (e) {
+        debugPrint('❌ Error loading employees, falling back to mock data: $e');
+        _allEmployees = List.from(EmployeeMockData.employees);
+      }
+    }
+
     _applyFilters();
 
     _isLoading = false;
@@ -77,7 +110,13 @@ class EmployeeProvider extends ChangeNotifier {
     _applyFilters();
   }
 
+  void loadMore() {
+    _visibleCount += 5;
+    notifyListeners();
+  }
+
   void _applyFilters() {
+    _visibleCount = 15; // Reset pagination when filters change
     _filteredList = _allEmployees.where((emp) {
       final query = _searchQuery.toLowerCase();
       final matchSearch = query.isEmpty ||

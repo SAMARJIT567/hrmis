@@ -1,11 +1,9 @@
-// ============================================================
 // 📁 lib/features/auth/providers/auth_provider.dart
-// ============================================================
-// 🔧 CREDENTIALS CHANGE KARNE KE LIYE SIRF YAHI EK FILE CHANGE KARO
-// ============================================================
 
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../../../core/services/api_service.dart';
 
 class AuthUser {
   final String id;
@@ -14,11 +12,13 @@ class AuthUser {
   final String role;
   final String department;
   final String designation;
-  final String avatarUrl;
-  final DateTime? joiningDate;
-  final bool isNoticePeriod;
-  final String gender; // 'Male', 'Female', 'Other'
-  final int survivingChildren;
+  final String empCode;
+  final String? avatarUrl;
+  final String? gender;
+  final int? survivingChildren;
+  final bool isActive;
+  final String? joiningDate;
+  final String? employeeType;
 
   const AuthUser({
     required this.id,
@@ -27,12 +27,72 @@ class AuthUser {
     required this.role,
     required this.department,
     this.designation = '',
-    this.avatarUrl = '',
+    this.empCode = '',
+    this.avatarUrl,
+    this.gender,
+    this.survivingChildren,
+    this.isActive = true,
     this.joiningDate,
-    this.isNoticePeriod = false,
-    this.gender = 'Male',
-    this.survivingChildren = 0,
+    this.employeeType,
   });
+
+  factory AuthUser.fromJson(Map<String, dynamic> json) {
+    String resolvedRole = 'employee';
+    if (json['role'] != null) {
+      resolvedRole = json['role'].toString();
+    } else {
+      final roleIdsRaw = json['role_ids'];
+      if (roleIdsRaw != null) {
+        try {
+          List<dynamic> parsedIds = [];
+          if (roleIdsRaw is List) {
+            parsedIds = roleIdsRaw;
+          } else if (roleIdsRaw is String) {
+            parsedIds = jsonDecode(roleIdsRaw) as List<dynamic>;
+          }
+          if (parsedIds.map((e) => e.toString()).contains('1')) {
+            resolvedRole = 'admin';
+          }
+        } catch (e) {
+          if (roleIdsRaw.toString().contains('"1"') || roleIdsRaw.toString().contains("'1'")) {
+            resolvedRole = 'admin';
+          }
+        }
+      }
+    }
+
+    return AuthUser(
+      id: json['id']?.toString() ?? '',
+      name: json['name'] ?? '',
+      email: json['email'] ?? '',
+      role: resolvedRole,
+      department: json['department'] ?? '',
+      designation: json['designation'] ?? '',
+      empCode: json['emp_code'] ?? '',
+      avatarUrl: json['avatar_url'],
+      gender: json['gender'],
+      survivingChildren: json['surviving_children'],
+      isActive: json['is_active'] == 1 || json['is_active'] == true || json['is_active'] == '1',
+      joiningDate: json['joining_date'],
+      employeeType: json['employee_type'] ?? json['appointment_type'],
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'email': email,
+    'role': role,
+    'department': department,
+    'designation': designation,
+    'emp_code': empCode,
+    'avatar_url': avatarUrl,
+    'gender': gender,
+    'surviving_children': survivingChildren,
+    'is_active': isActive,
+    'joining_date': joiningDate,
+    'employee_type': employeeType,
+  };
 }
 
 class AuthProvider extends ChangeNotifier {
@@ -40,60 +100,58 @@ class AuthProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _isLoggedIn = false;
   String? _errorMessage;
+  String? _token;
+
+  final ApiService _apiService = ApiService();
 
   AuthUser? get currentUser => _currentUser;
   bool get isLoading => _isLoading;
   bool get isLoggedIn => _isLoggedIn;
   String? get errorMessage => _errorMessage;
+  String? get token => _token;
   bool get isAdmin => _currentUser?.role == 'admin';
   bool get isEmployee => _currentUser?.role == 'employee';
 
   AuthProvider() {
+    _initApi();
     _checkSession();
+  }
+
+  void _initApi() {
+    _apiService.init();
   }
 
   Future<void> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedEmail = prefs.getString('user_email');
-    if (savedEmail != null && savedEmail.isNotEmpty) {
-      _currentUser = _getUserByEmail(savedEmail);
-      if (_currentUser != null) {
-        _loadSavedProfileUpdates();
+    final token = prefs.getString('jwt_token');
+    final userJson = prefs.getString('user_data');
+
+    if (token != null && token.isNotEmpty && userJson != null) {
+      try {
+        _token = token;
+        final Map<String, dynamic> data = jsonDecode(userJson) as Map<String, dynamic>;
+        _currentUser = AuthUser.fromJson(data);
+        _isLoggedIn = true;
+        notifyListeners();
+      } catch (e) {
+        // Invalid stored data
+        await _clearSession();
       }
-      _isLoggedIn = _currentUser != null;
-      notifyListeners();
     }
   }
 
-  void _loadSavedProfileUpdates() async {
-    if (_currentUser == null) return;
+  Future<void> _clearSession() async {
     final prefs = await SharedPreferences.getInstance();
-    final savedName = prefs.getString('user_name_${_currentUser!.id}');
-    final savedEmail = prefs.getString('user_email_${_currentUser!.id}');
-    final savedDepartment = prefs.getString('user_department_${_currentUser!.id}');
-    final savedDesignation = prefs.getString('user_designation_${_currentUser!.id}');
-
-    if (savedName != null ||
-        savedEmail != null ||
-        savedDepartment != null ||
-        savedDesignation != null) {
-      _currentUser = AuthUser(
-        id: _currentUser!.id,
-        name: savedName ?? _currentUser!.name,
-        email: savedEmail ?? _currentUser!.email,
-        role: _currentUser!.role,
-        department: savedDepartment ?? _currentUser!.department,
-        designation: savedDesignation ?? _currentUser!.designation,
-        avatarUrl: _currentUser!.avatarUrl,
-        joiningDate: _currentUser!.joiningDate,
-        isNoticePeriod: _currentUser!.isNoticePeriod,
-        gender: (savedName != null) ? _currentUser!.gender : 'Male', // Safety check
-        survivingChildren: _currentUser!.survivingChildren,
-      );
-      notifyListeners();
-    }
+    await prefs.remove('jwt_token');
+    await prefs.remove('user_data');
+    await prefs.remove('user_email');
+    _token = null;
+    _currentUser = null;
+    _isLoggedIn = false;
+    notifyListeners();
   }
 
+  // ─── LOGIN ──────────────────────────────────────────────────────
   Future<bool> login({
     required String email,
     required String password,
@@ -103,151 +161,91 @@ class AuthProvider extends ChangeNotifier {
     _isLoading = true;
     notifyListeners();
 
-    try {
-      await Future.delayed(const Duration(seconds: 1));
+    final trimmedEmail = email.trim().toLowerCase();
+    final isAdmin = trimmedEmail.contains('admin') || trimmedEmail == 'demo@hrmis.com';
 
-      if (email.isEmpty || !email.contains('@')) {
-        _errorMessage = 'Please enter a valid email address.';
-        return false;
-      }
-      if (password.length < 6) {
-        _errorMessage = 'Password must be at least 6 characters.';
-        return false;
-      }
+    if (isAdmin) {
+      // Admin loads locally and runs on mock data
+      await Future.delayed(const Duration(milliseconds: 500)); // Small delay for realistic UI feel
+      _token = 'mock_jwt_token_for_demo';
+      _currentUser = AuthUser(
+        id: 'EMP001',
+        name: 'Demo Admin',
+        email: trimmedEmail,
+        role: 'admin',
+        department: 'Management',
+        designation: 'Administrator',
+        empCode: 'ADM001',
+        isActive: true,
+      );
+      _isLoggedIn = true;
 
-      // ─── ADMIN LOGIN ─────────────────────────────────────────
-      if (email == 'admin@hrmis.com' && password == 'password123') {
-        _currentUser = _getUserByEmail(email);
-        _isLoggedIn = true;
-        if (rememberMe && _currentUser != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_email', email);
-        }
-        return true;
-      }
-
-      // ─── EMPLOYEE 1 ──────────────────────────────────────────
-      else if (email == 'user@hrmis.com' && password == 'password123') {
-        _currentUser = _getUserByEmail(email);
-        _isLoggedIn = true;
-        if (rememberMe && _currentUser != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_email', email);
-        }
-        return true;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('jwt_token', _token!);
+      await prefs.setString('user_data', jsonEncode(_currentUser!.toJson()));
+      if (rememberMe) {
+        await prefs.setString('user_email', email);
       }
 
-      // ─── EMPLOYEE 2 ───────────────────────────────────────────
-      else if (email == 'priya@techcorp.com' && password == 'password123') {
-        _currentUser = _getUserByEmail(email);
-        _isLoggedIn = true;
-        if (rememberMe && _currentUser != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_email', email);
-        }
-        return true;
-      }
-
-      // ─── EMPLOYEE 3 ────────────────────────────────────────────
-      else if (email == 'amit@techcorp.com' && password == 'password123') {
-        _currentUser = _getUserByEmail(email);
-        _isLoggedIn = true;
-        if (rememberMe && _currentUser != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_email', email);
-        }
-        return true;
-      }
-
-      // ─── EMPLOYEE 4 ───────────────────────────────────────────
-      else if (email == 'sneha@techcorp.com' && password == 'password123') {
-        _currentUser = _getUserByEmail(email);
-        _isLoggedIn = true;
-        if (rememberMe && _currentUser != null) {
-          final prefs = await SharedPreferences.getInstance();
-          await prefs.setString('user_email', email);
-        }
-        return true;
-      } else {
-        _errorMessage =
-            'Invalid email or password.\n\nDemo Credentials:\nAdmin: admin@hrmis.com\nEmployee: user@hrmis.com\nPassword: password123';
-        return false;
-      }
-    } catch (e) {
-      _errorMessage = 'Login failed. Please try again.';
-      return false;
-    } finally {
       _isLoading = false;
+      _errorMessage = null;
       notifyListeners();
+      return true;
+    } else {
+      // Employees authenticate using real API/Database credentials
+      try {
+        final response = await _apiService.login(
+          email: email.trim(),
+          password: password,
+        );
+
+        final token = response['token'] as String?;
+        final userData = response['user'] as Map<String, dynamic>?;
+
+        if (token == null || userData == null) {
+          _errorMessage = 'Invalid server response';
+          _isLoading = false;
+          notifyListeners();
+          return false;
+        }
+
+        _token = token;
+        _currentUser = AuthUser.fromJson(userData);
+        _isLoggedIn = true;
+
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('jwt_token', token);
+        await prefs.setString('user_data', jsonEncode(userData));
+        if (rememberMe) {
+          await prefs.setString('user_email', email);
+        }
+
+        _isLoading = false;
+        _errorMessage = null;
+        notifyListeners();
+        return true;
+      } catch (e) {
+        _errorMessage = e.toString();
+        _isLoading = false;
+        notifyListeners();
+        return false;
+      }
     }
   }
 
-  AuthUser? _getUserByEmail(String email) {
-    final users = {
-      'admin@hrmis.com': AuthUser(
-        id: 'ADMIN001',
-        name: 'Admin User',
-        email: 'admin@hrmis.com',
-        role: 'admin',
-        department: 'Human Resources',
-        designation: 'System Administrator',
-        joiningDate: DateTime(2020, 1, 1),
-        isNoticePeriod: false,
-        gender: 'Male',
-        survivingChildren: 2,
-      ),
-      'user@hrmis.com': AuthUser(
-        id: 'EMP001',
-        name: 'Rahul Sharma',
-        email: 'user@hrmis.com',
-        role: 'employee',
-        department: 'Engineering',
-        designation: 'Senior Developer',
-        joiningDate: DateTime(DateTime.now().year, 1, 1), // Joined Jan 1st
-        isNoticePeriod: false,
-        gender: 'Male',
-        survivingChildren: 1,
-      ),
-      'priya@techcorp.com': AuthUser(
-        id: 'EMP002',
-        name: 'Priya Singh',
-        email: 'priya@techcorp.com',
-        role: 'employee',
-        department: 'HR',
-        designation: 'HR Manager',
-        joiningDate: DateTime(DateTime.now().year, 7, 1), // Joined July 1st (Pro-rata demo)
-        isNoticePeriod: true, // Demo: In Notice Period
-        gender: 'Female',
-        survivingChildren: 0,
-      ),
-      'amit@techcorp.com': AuthUser(
-        id: 'EMP003',
-        name: 'Amit Verma',
-        email: 'amit@techcorp.com',
-        role: 'employee',
-        department: 'Finance',
-        designation: 'Accounts Manager',
-        joiningDate: DateTime(2022, 3, 15),
-        isNoticePeriod: false,
-        gender: 'Male',
-        survivingChildren: 2,
-      ),
-      'sneha@techcorp.com': AuthUser(
-        id: 'EMP004',
-        name: 'Sneha Patel',
-        email: 'sneha@techcorp.com',
-        role: 'employee',
-        department: 'Design',
-        designation: 'UI/UX Designer',
-        joiningDate: DateTime(2023, 5, 20),
-        isNoticePeriod: false,
-        gender: 'Female',
-        survivingChildren: 1,
-      ),
-    };
-    return users[email];
+  // ─── LOGOUT ─────────────────────────────────────────────────────
+  Future<void> logout() async {
+    try {
+      // Optional: Call logout API
+      // await _apiService.logout();
+    } catch (e) {
+      // Ignore errors on logout
+    } finally {
+      await _clearSession();
+    }
   }
 
+  // ─── Update Profile ───────────────────────────────────────────
   Future<void> updateCurrentUser({
     required String name,
     required String email,
@@ -256,6 +254,7 @@ class AuthProvider extends ChangeNotifier {
   }) async {
     if (_currentUser == null) return;
 
+    // Update local
     _currentUser = AuthUser(
       id: _currentUser!.id,
       name: name,
@@ -263,14 +262,13 @@ class AuthProvider extends ChangeNotifier {
       role: _currentUser!.role,
       department: department,
       designation: designation,
-      avatarUrl: _currentUser!.avatarUrl,
-      joiningDate: _currentUser!.joiningDate,
-      isNoticePeriod: _currentUser!.isNoticePeriod,
-      gender: _currentUser!.gender,
-      survivingChildren: _currentUser!.survivingChildren,
+      empCode: _currentUser!.empCode,
+      isActive: _currentUser!.isActive,
     );
 
+    // Save to storage
     final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('user_data', jsonEncode(_currentUser!.toJson()));
     await prefs.setString('user_name_${_currentUser!.id}', name);
     await prefs.setString('user_email_${_currentUser!.id}', email);
     await prefs.setString('user_department_${_currentUser!.id}', department);
@@ -292,13 +290,45 @@ class AuthProvider extends ChangeNotifier {
     return prefs.getString('profile_image_${_currentUser!.id}');
   }
 
-  Future<void> logout() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('user_email');
-    _currentUser = null;
-    _isLoggedIn = false;
-    _errorMessage = null;
+  Future<void> fetchProfile() async {
+    if (_currentUser == null || isAdmin) return;
+    _isLoading = true;
     notifyListeners();
+    try {
+      final response = await _apiService.getProfile();
+      final userData = response['user'];
+      final empData = response['employee'];
+
+      if (userData != null) {
+        final Map<String, dynamic> merged = Map<String, dynamic>.from(userData as Map<String, dynamic>);
+        if (empData != null) {
+          final empMap = empData as Map<String, dynamic>;
+          merged['gender'] = empMap['gender'];
+          merged['emp_code'] = empMap['code'] ?? userData['emp_code'];
+          merged['mobile_number'] = empMap['mobile_number'];
+          merged['surviving_children'] = empMap['surviving_children'];
+          merged['joining_date'] = empMap['date_of_joining'] ?? empMap['datetime_of_joining'];
+          merged['employee_type'] = empMap['appointment_type'];
+          
+          if (empMap['department'] != null) {
+            merged['department'] = empMap['department']['name'];
+          }
+          if (empMap['designation'] != null) {
+            merged['designation'] = empMap['designation']['name'];
+          }
+        }
+        
+        _currentUser = AuthUser.fromJson(merged);
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('user_data', jsonEncode(merged));
+        notifyListeners();
+      }
+    } catch (e) {
+      debugPrint('❌ Error fetching profile from backend: $e');
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
   }
 
   void clearError() {

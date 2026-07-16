@@ -86,9 +86,6 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
               ],
             ),
           ),
-          _headerIconBtn(Icons.notifications_outlined),
-          SizedBox(width: 10.w),
-          _headerIconBtn(Icons.filter_list_rounded),
         ],
       ),
     );
@@ -109,52 +106,77 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
   Widget _buildSearchBar() {
     return Container(
       margin: EdgeInsets.fromLTRB(16.w, 16.h, 16.w, 0),
-      padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
       decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(14.r),
-        border: Border.all(color: AppColors.border, width: 0.5),
         boxShadow: [
           BoxShadow(
-            color: AppColors.shadow,
+            color: AppColors.shadow.withOpacity(0.04),
             blurRadius: 10,
-            offset: const Offset(0, 2),
+            offset: const Offset(0, 4),
           ),
         ],
       ),
-      child: Row(
-        children: [
-          Icon(Icons.search_rounded, color: AppColors.textTertiary, size: 20.sp),
-          SizedBox(width: 10.w),
-          Expanded(
-            child: TextField(
-              controller: _searchCtrl,
-              onChanged: (val) => context.read<EmployeeProvider>().search(val),
-              style: GoogleFonts.poppins(
-                fontSize: 13.sp,
-                color: AppColors.textPrimary,
-              ),
-              decoration: InputDecoration(
-                hintText: AppStrings.searchEmployee,
-                hintStyle: GoogleFonts.poppins(
-                  fontSize: 13.sp,
-                  color: AppColors.textTertiary,
-                ),
-                border: InputBorder.none,
-                isDense: true,
-                contentPadding: EdgeInsets.zero,
-              ),
+      child: TextField(
+        controller: _searchCtrl,
+        onChanged: (val) {
+          context.read<EmployeeProvider>().search(val);
+          setState(() {});
+        },
+        style: GoogleFonts.poppins(
+          fontSize: 14.sp,
+          color: AppColors.textPrimary,
+          fontWeight: FontWeight.w500,
+        ),
+        decoration: InputDecoration(
+          hintText: AppStrings.searchEmployee,
+          hintStyle: GoogleFonts.poppins(
+            fontSize: 13.sp,
+            color: AppColors.textTertiary,
+            fontWeight: FontWeight.w400,
+          ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: AppColors.textTertiary,
+            size: 20.sp,
+          ),
+          suffixIcon: _searchCtrl.text.isNotEmpty
+              ? IconButton(
+                  icon: Icon(
+                    Icons.clear_rounded,
+                    color: AppColors.textSecondary,
+                    size: 18.sp,
+                  ),
+                  onPressed: () {
+                    _searchCtrl.clear();
+                    context.read<EmployeeProvider>().search('');
+                    setState(() {});
+                  },
+                )
+              : null,
+          filled: true,
+          fillColor: AppColors.surface,
+          contentPadding: EdgeInsets.symmetric(vertical: 12.h, horizontal: 16.w),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16.r),
+            borderSide: BorderSide(
+              color: AppColors.border,
+              width: 0.5,
             ),
           ),
-          if (_searchCtrl.text.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                _searchCtrl.clear();
-                context.read<EmployeeProvider>().search('');
-              },
-              child: Icon(Icons.close, color: AppColors.textTertiary, size: 18.sp),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16.r),
+            borderSide: BorderSide(
+              color: AppColors.border.withOpacity(0.8),
+              width: 0.5,
             ),
-        ],
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(16.r),
+            borderSide: const BorderSide(
+              color: AppColors.primary,
+              width: 1.0,
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -288,8 +310,11 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
           child: ListView.builder(
             padding: EdgeInsets.fromLTRB(16.w, 14.h, 16.w, 80.h),
             physics: const AlwaysScrollableScrollPhysics(),
-            itemCount: provider.employees.length,
+            itemCount: provider.employees.length + (provider.hasMore ? 1 : 0),
             itemBuilder: (_, i) {
+              if (i == provider.employees.length) {
+                return _buildViewMoreButton(provider);
+              }
               final emp = provider.employees[i];
               return EmployeeCard(
                 employee: emp,
@@ -303,6 +328,33 @@ class _EmployeesScreenState extends State<EmployeesScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildViewMoreButton(EmployeeProvider provider) {
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 16.h),
+      child: Center(
+        child: TextButton.icon(
+          onPressed: provider.loadMore,
+          icon: Icon(Icons.expand_more_rounded, size: 20.sp, color: AppColors.primary),
+          label: Text(
+            'View More Employees',
+            style: GoogleFonts.poppins(
+              fontSize: 13.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.primary,
+            ),
+          ),
+          style: TextButton.styleFrom(
+            padding: EdgeInsets.symmetric(horizontal: 20.w, vertical: 10.h),
+            backgroundColor: AppColors.primary.withOpacity(0.08),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12.r),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

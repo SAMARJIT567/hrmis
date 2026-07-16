@@ -9,14 +9,8 @@
         android:label="hrmis_new"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
-        android:hardwareAccelerated="true">
-
-        <!-- Fixes Google Maps rendering on certain Android versions -->
-        <uses-library android:name="org.apache.http.legacy" android:required="false" />
-
-        <!-- TODO: Replace with your actual Google Maps API Key -->
-        <meta-data android:name="com.google.android.geo.API_KEY"
-            android:value="AIzaSyCPjQzlF_cwXU2GhTZAR8qYreasmBVbV2A"/>
+        android:hardwareAccelerated="true"
+        android:usesCleartextTraffic="true">
 
         <activity
             android:name=".MainActivity"

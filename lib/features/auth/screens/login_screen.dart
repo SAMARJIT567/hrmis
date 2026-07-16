@@ -9,9 +9,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/constants/app_strings.dart';
+import '../../../core/services/api_service.dart';
 import '../../../shared/widgets/custom_button.dart';
 import '../../../shared/widgets/custom_text_field.dart';
 
@@ -55,6 +57,107 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
+  Future<void> _showSettingsDialog() async {
+    final prefs = await SharedPreferences.getInstance();
+    final currentUrl = prefs.getString('custom_api_url') ?? ApiService().baseUrl;
+    final controller = TextEditingController(text: currentUrl);
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: AppColors.surface,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16.r),
+          ),
+          title: Text(
+            'Server Settings',
+            style: GoogleFonts.poppins(
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Configure the Laravel backend API base URL for this device.',
+                style: GoogleFonts.poppins(
+                  fontSize: 12.sp,
+                  color: AppColors.textSecondary,
+                ),
+              ),
+              SizedBox(height: 16.h),
+              CustomTextField(
+                controller: controller,
+                label: 'Backend URL',
+                hint: 'http://192.168.1.100:8000/api',
+                prefixIcon: Icons.lan_rounded,
+                validator: (val) {
+                  if (val == null || val.trim().isEmpty) {
+                    return 'URL cannot be empty';
+                  }
+                  if (!val.startsWith('http://') && !val.startsWith('https://')) {
+                    return 'Must start with http:// or https://';
+                  }
+                  return null;
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: Text(
+                'Cancel',
+                style: GoogleFonts.poppins(
+                  color: AppColors.textSecondary,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                final newUrl = controller.text.trim();
+                if (newUrl.isEmpty || (!newUrl.startsWith('http://') && !newUrl.startsWith('https://'))) {
+                  return;
+                }
+                final localPrefs = await SharedPreferences.getInstance();
+                await localPrefs.setString('custom_api_url', newUrl);
+                ApiService().updateBaseUrl(newUrl);
+
+                if (context.mounted) {
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('API Base URL updated to $newUrl'),
+                      backgroundColor: AppColors.success,
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8.r),
+                ),
+              ),
+              child: Text(
+                'Save',
+                style: GoogleFonts.poppins(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -79,6 +182,15 @@ class _LoginScreenState extends State<LoginScreen>
       body: Stack(
         children: [
           _buildBackground(),
+          Positioned(
+            top: MediaQuery.of(context).padding.top + 8,
+            right: 16,
+            child: IconButton(
+              icon: const Icon(Icons.settings_outlined, color: Colors.white),
+              onPressed: _showSettingsDialog,
+              tooltip: 'Server Settings',
+            ),
+          ),
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -208,14 +320,16 @@ class _LoginScreenState extends State<LoginScreen>
             ),
             SizedBox(height: 28.h),
             CustomTextField(
-              label: AppStrings.emailLabel,
-              hint: AppStrings.emailHint,
+              label: 'Email / Employee Code',
+              hint: 'Enter your email or employee code',
               controller: _emailCtrl,
-              keyboardType: TextInputType.emailAddress,
-              prefixIcon: Icons.email_outlined,
+              keyboardType: TextInputType.text,
+              prefixIcon: Icons.person_outline_rounded,
               validator: (val) {
-                if (val == null || val.isEmpty) return AppStrings.errorRequired;
-                if (!val.contains('@')) return AppStrings.errorEmail;
+                if (val == null || val.trim().isEmpty) return AppStrings.errorRequired;
+                if (!val.contains('@') && val.trim().length < 3) {
+                  return 'Please enter a valid email or employee code';
+                }
                 return null;
               },
             ),

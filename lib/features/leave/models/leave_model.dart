@@ -34,10 +34,100 @@ class LeaveRequest {
     this.approvedBy,
     this.remarks,
   });
+
+  factory LeaveRequest.fromJson(Map<String, dynamic> json) {
+    final fromDateStr = json['from_date']?.toString() ?? '';
+    final toDateStr = json['to_date']?.toString() ?? '';
+    double calculatedDays = 1.0;
+    try {
+      if (fromDateStr.isNotEmpty && toDateStr.isNotEmpty) {
+        final from = DateTime.parse(fromDateStr);
+        final to = DateTime.parse(toDateStr);
+        calculatedDays = to.difference(from).inDays + 1.0;
+      }
+    } catch (_) {}
+
+    String resolvedStatus = json['status']?.toString().toLowerCase() ?? 'pending';
+    if (resolvedStatus == 'approve') resolvedStatus = 'approved';
+    if (resolvedStatus == 'reject') resolvedStatus = 'rejected';
+
+    return LeaveRequest(
+      id: json['id']?.toString() ?? '',
+      employeeId: json['emp_id']?.toString() ?? json['emp_code']?.toString() ?? '',
+      employeeName: json['emp_info']?['name']?.toString() ?? 'N/A',
+      department: json['emp_info']?['employee']?['department']?['name']?.toString() ?? 'N/A',
+      leaveType: json['leave_type']?['name']?.toString() ?? 'N/A',
+      fromDate: fromDateStr,
+      toDate: toDateStr,
+      days: calculatedDays,
+      reason: json['reason']?.toString() ?? '',
+      status: resolvedStatus,
+      appliedOn: json['created_at'] != null ? json['created_at'].toString().substring(0, 10) : '',
+      approvedBy: json['approved_by']?.toString(),
+      remarks: json['remarks']?.toString(),
+    );
+  }
 }
 
 class LeaveMockData {
-  static List<LeaveRequest> get requests => [];
+  static List<LeaveRequest> get requests => [
+    const LeaveRequest(
+      id: 'LV001',
+      employeeId: 'EMP001',
+      employeeName: 'Rahul Sharma',
+      department: 'Engineering',
+      leaveType: 'Casual Leave',
+      fromDate: '2026-07-20',
+      toDate: '2026-07-22',
+      days: 3.0,
+      reason: 'Family function at home town',
+      status: 'pending',
+      appliedOn: '2026-07-15',
+    ),
+    const LeaveRequest(
+      id: 'LV002',
+      employeeId: 'EMP003',
+      employeeName: 'Amit Verma',
+      department: 'Finance',
+      leaveType: 'Earned Leave',
+      fromDate: '2026-07-10',
+      toDate: '2026-07-14',
+      days: 5.0,
+      reason: 'Personal work and travel',
+      status: 'approved',
+      appliedOn: '2026-07-05',
+      approvedBy: 'Priya Singh',
+      remarks: 'Approved, handover details submitted',
+    ),
+    const LeaveRequest(
+      id: 'LV003',
+      employeeId: 'EMP004',
+      employeeName: 'Sneha Patel',
+      department: 'Design',
+      leaveType: 'Casual Leave',
+      fromDate: '2026-07-18',
+      toDate: '2026-07-18',
+      days: 1.0,
+      reason: 'Doctor appointment',
+      status: 'rejected',
+      appliedOn: '2026-07-14',
+      approvedBy: 'Priya Singh',
+      remarks: 'Rejected due to urgent design delivery deadline',
+    ),
+    const LeaveRequest(
+      id: 'LV004',
+      employeeId: 'EMP006',
+      employeeName: 'Ananya Roy',
+      department: 'Engineering',
+      leaveType: 'Maternity Leave',
+      fromDate: '2026-08-01',
+      toDate: '2026-11-30',
+      days: 122.0,
+      reason: 'Maternity leave application',
+      status: 'pending',
+      appliedOn: '2026-07-12',
+    ),
+  ];
 }
 
 class LeavePolicy {

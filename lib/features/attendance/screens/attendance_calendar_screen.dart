@@ -8,6 +8,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
+import 'package:table_calendar/table_calendar.dart';
+import '../providers/employee_attendance_provider.dart';
+import '../../leave/providers/leave_provider.dart';
 import '../../../core/constants/app_colors.dart';
 import '../../../core/utils/helpers.dart';
 
@@ -22,26 +26,106 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   DateTime _currentMonth = DateTime.now();
   DateTime _selectedDate = DateTime.now();
 
-  final Map<String, String> _attendanceData = {
-    '2026-05-01': 'Present', '2026-05-02': 'Present', '2026-05-03': 'Absent',
-    '2026-05-04': 'Present', '2026-05-05': 'Leave', '2026-05-06': 'Present',
-    '2026-05-07': 'Holiday', '2026-05-08': 'Present', '2026-05-09': 'Present',
-    '2026-05-10': 'Late', '2026-05-11': 'Present', '2026-05-12': 'Absent',
-    '2026-05-13': 'Present', '2026-05-14': 'Present', '2026-05-15': 'Leave',
-    '2026-05-16': 'Present', '2026-05-17': 'Holiday', '2026-05-18': 'Present',
-    '2026-05-19': 'Present', '2026-05-20': 'Present', '2026-05-21': 'Late',
-    '2026-05-22': 'Present', '2026-05-23': 'Present', '2026-05-24': 'Absent',
-    '2026-05-25': 'Present', '2026-05-26': 'Present',
-  };
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<EmployeeAttendanceProvider>().loadMyAttendance(
+        month: DateFormat('MM').format(_currentMonth),
+        year: DateFormat('yyyy').format(_currentMonth),
+      );
+    });
+  }
 
-  String? getStatusForDate(DateTime date) {
+  void _onMonthChanged(DateTime newMonth) {
+    setState(() {
+      _currentMonth = newMonth;
+    });
+    context.read<EmployeeAttendanceProvider>().loadMyAttendance(
+      month: DateFormat('MM').format(newMonth),
+      year: DateFormat('yyyy').format(newMonth),
+    );
+  }
+
+  String? getStatusForDate(DateTime date, EmployeeAttendanceProvider attendanceProv, LeaveProvider leaveProv) {
+    // 1. Check approved/pending leave applications from leave provider (can be past or future!)
+    for (final req in leaveProv.allRequests) {
+      if (req.status == 'approved' || req.status == 'pending') {
+        try {
+          DateTime fromDate;
+          DateTime toDate;
+          if (req.fromDate.contains(RegExp(r'[a-zA-Z]'))) {
+            fromDate = DateFormat('dd MMM yyyy').parse(req.fromDate);
+          } else {
+            fromDate = DateFormat('yyyy-MM-dd').parse(req.fromDate);
+          }
+          if (req.toDate.contains(RegExp(r'[a-zA-Z]'))) {
+            toDate = DateFormat('dd MMM yyyy').parse(req.toDate);
+          } else {
+            toDate = DateFormat('yyyy-MM-dd').parse(req.toDate);
+          }
+
+          // Normalize times
+          final check = DateTime(date.year, date.month, date.day);
+          final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
+          final to = DateTime(toDate.year, toDate.month, toDate.day);
+
+          if (!check.isBefore(from) && !check.isAfter(to)) {
+            if (req.leaveType.toLowerCase().contains('tour')) {
+              return 'Tour';
+            }
+            if (req.leaveType.toLowerCase().contains('half')) {
+              return 'Half Day';
+            }
+            return 'Leave';
+          }
+        } catch (_) {}
+      }
+    }
+
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
     final checkDate = DateTime(date.year, date.month, date.day);
 
     if (checkDate.isAfter(todayDate)) return null;
-    final key = DateFormat('yyyy-MM-dd').format(date);
-    return _attendanceData[key] ?? 'Present';
+
+    // Check records from provider
+    for (final record in attendanceProv.records) {
+      try {
+        DateTime recordDate;
+        if (record.date.contains(RegExp(r'[a-zA-Z]'))) {
+          recordDate = DateFormat('dd MMM yyyy').parse(record.date);
+        } else {
+          recordDate = DateFormat('yyyy-MM-dd').parse(record.date);
+        }
+
+        if (recordDate.year == date.year &&
+            recordDate.month == date.month &&
+            recordDate.day == date.day) {
+          return record.status;
+        }
+      } catch (_) {
+        final keyYmd = DateFormat('yyyy-MM-dd').format(date);
+        final keyDmy = DateFormat('dd MMM yyyy').format(date);
+        if (record.date == keyYmd || record.date == keyDmy) {
+          return record.status;
+        }
+      }
+    }
+
+    // Check holidays from Laravel
+    final dateStr = DateFormat('yyyy-MM-dd').format(date);
+    if (attendanceProv.holidays.contains(dateStr)) {
+      return 'Holiday';
+    }
+
+    // Check weekend from Laravel
+    final dayOfWeek = DateFormat('EEEE').format(date); // e.g. "Sunday"
+    if (dayOfWeek.toLowerCase() == attendanceProv.weekend.toLowerCase()) {
+      return 'Weekend';
+    }
+
+    return null;
   }
 
   Color getStatusColor(String? status) {
@@ -49,9 +133,13 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     switch (status) {
       case 'Present': return AppColors.success;
       case 'Absent': return AppColors.error;
-      case 'Leave': return AppColors.secondary;
-      case 'Holiday': return AppColors.info;
-      case 'Late': return AppColors.warning;
+      case 'Leave': return Colors.purple;
+      case 'Holiday': return Colors.orange;
+      case 'Late':
+      case 'Late In': return Colors.pinkAccent;
+      case 'Weekend': return Colors.deepPurpleAccent;
+      case 'Tour': return Colors.indigo;
+      case 'Half Day': return Colors.blue;
       default: return AppColors.textTertiary;
     }
   }
@@ -63,7 +151,11 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       case 'Absent': return '✗';
       case 'Leave': return '🌴';
       case 'Holiday': return '🎉';
-      case 'Late': return '⏰';
+      case 'Late':
+      case 'Late In': return '⏰';
+      case 'Weekend': return 'WE';
+      case 'Tour': return 'T';
+      case 'Half Day': return 'hd';
       default: return '•';
     }
   }
@@ -74,19 +166,18 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
   }
 
   void _previousMonth() {
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month - 1);
-    });
+    _onMonthChanged(DateTime(_currentMonth.year, _currentMonth.month - 1));
   }
 
   void _nextMonth() {
-    setState(() {
-      _currentMonth = DateTime(_currentMonth.year, _currentMonth.month + 1);
-    });
+    _onMonthChanged(DateTime(_currentMonth.year, _currentMonth.month + 1));
   }
 
   @override
   Widget build(BuildContext context) {
+    final attendanceProv = context.watch<EmployeeAttendanceProvider>();
+    final leaveProv = context.watch<LeaveProvider>();
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -110,9 +201,9 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         child: Column(
           children: [
             _buildLegend(),
-            _buildCalendar(),
-            _buildSummaryCards(),
-            _buildSelectedDateInfo(),
+            _buildCalendar(attendanceProv, leaveProv),
+            _buildSummaryCards(attendanceProv, leaveProv),
+            _buildSelectedDateInfo(attendanceProv, leaveProv),
             SizedBox(height: 20.h),
           ],
         ),
@@ -148,10 +239,9 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     final legendItems = [
       {'status': 'Present', 'color': AppColors.success},
       {'status': 'Absent', 'color': AppColors.error},
-      {'status': 'Leave', 'color': AppColors.secondary},
-      {'status': 'Holiday', 'color': AppColors.info},
-      {'status': 'Late', 'color': AppColors.warning},
-      {'status': 'No Record', 'color': AppColors.border},
+      {'status': 'Leave', 'color': Colors.blue},
+      {'status': 'Weekend', 'color': Colors.purple},
+      {'status': 'Holiday', 'color': Colors.orange},
     ];
 
     return Container(
@@ -186,18 +276,7 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
     );
   }
 
-  Widget _buildCalendar() {
-    final firstDayOfMonth = DateTime(_currentMonth.year, _currentMonth.month, 1);
-    final firstWeekday = firstDayOfMonth.weekday;
-    final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
-
-    int startOffset = firstWeekday - 1;
-    if (startOffset == 0) startOffset = 7;
-    startOffset = startOffset - 1;
-
-    final totalDays = startOffset + daysInMonth;
-    final numRows = (totalDays / 7).ceil();
-
+  Widget _buildCalendar(EmployeeAttendanceProvider attendanceProv, LeaveProvider leaveProv) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 12.r),
       decoration: BoxDecoration(
@@ -205,97 +284,191 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         borderRadius: BorderRadius.circular(12.r),
         border: Border.all(color: AppColors.border),
       ),
-      child: Column(
-        children: [
-          Container(
-            padding: EdgeInsets.symmetric(vertical: 8.h),
-            decoration: BoxDecoration(
-              color: AppColors.primarySurface,
-              borderRadius: BorderRadius.vertical(top: Radius.circular(12.r)),
-            ),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map((day) {
-                return Expanded(
-                  child: Text(
-                    day,
-                    textAlign: TextAlign.center,
-                    style: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: AppColors.primary),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-          ...List.generate(numRows, (row) {
-            return Row(
-              children: List.generate(7, (col) {
-                final dayIndex = row * 7 + col - startOffset;
-                if (dayIndex >= 0 && dayIndex < daysInMonth) {
-                  final date = DateTime(_currentMonth.year, _currentMonth.month, dayIndex + 1);
-                  final isToday = date.year == DateTime.now().year &&
-                      date.month == DateTime.now().month &&
-                      date.day == DateTime.now().day;
-                  final status = getStatusForDate(date);
-                  final statusColor = getStatusColor(status);
-                  final isSelected = _selectedDate.year == date.year &&
-                      _selectedDate.month == date.month &&
-                      _selectedDate.day == date.day;
+      child: TableCalendar(
+        firstDay: DateTime.utc(2020, 1, 1),
+        lastDay: DateTime.utc(2030, 12, 31),
+        focusedDay: _currentMonth,
+        currentDay: DateTime.now(),
+        headerVisible: false, // We use the month selector in the AppBar
+        calendarFormat: CalendarFormat.month,
+        startingDayOfWeek: StartingDayOfWeek.sunday,
+        daysOfWeekHeight: 28.h,
+        rowHeight: 48.h,
+        selectedDayPredicate: (day) {
+          return isSameDay(_selectedDate, day);
+        },
+        onDaySelected: (selectedDay, focusedDay) {
+          setState(() {
+            _selectedDate = selectedDay;
+            _currentMonth = focusedDay;
+          });
+        },
+        onPageChanged: (focusedDay) {
+          _onMonthChanged(focusedDay);
+        },
+        daysOfWeekStyle: DaysOfWeekStyle(
+          weekdayStyle: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: AppColors.primary),
+          weekendStyle: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: AppColors.primary),
+        ),
+        calendarStyle: const CalendarStyle(
+          isTodayHighlighted: false,
+          outsideDaysVisible: false,
+        ),
+        calendarBuilders: CalendarBuilders(
+          prioritizedBuilder: (context, day, focusedDay) {
+            if (day.month != focusedDay.month) {
+              return const SizedBox.shrink(); // Hide outside days
+            }
 
-                  return Expanded(
-                    child: GestureDetector(
-                      onTap: () => setState(() => _selectedDate = date),
-                      child: Container(
-                        margin: EdgeInsets.all(2.r),
-                        padding: EdgeInsets.symmetric(vertical: 4.h),
-                        decoration: BoxDecoration(
-                          color: isSelected ? statusColor.withOpacity(0.2) : Colors.transparent,
-                          borderRadius: BorderRadius.circular(6.r),
-                          border: isSelected
-                              ? Border.all(color: statusColor, width: 1)
-                              : (isToday ? Border.all(color: AppColors.primary, width: 1) : null),
-                        ),
-                        child: Column(
-                          children: [
-                            Text(
-                              '${dayIndex + 1}',
-                              style: GoogleFonts.poppins(
-                                fontSize: 12.sp,
-                                fontWeight: FontWeight.w500,
-                                color: isToday ? AppColors.primary : AppColors.textPrimary,
-                              ),
-                            ),
-                            SizedBox(height: 2.h),
-                            Container(
-                              width: 20.w, height: 20.h,
-                              decoration: BoxDecoration(
-                                color: status == null ? AppColors.border.withOpacity(0.3) : statusColor,
-                                shape: BoxShape.circle,
-                              ),
-                              child: Center(
-                                child: Text(
-                                  getStatusIcon(status),
-                                  style: TextStyle(fontSize: 10.sp, color: status == null ? AppColors.textTertiary : Colors.white),
-                                ),
-                              ),
-                            ),
-                          ],
+            final date = DateTime(day.year, day.month, day.day);
+            final isToday = date.year == DateTime.now().year &&
+                date.month == DateTime.now().month &&
+                date.day == DateTime.now().day;
+            final status = getStatusForDate(date, attendanceProv, leaveProv);
+            final isSelected = isSameDay(_selectedDate, date);
+
+            final dayOfWeek = DateFormat('EEEE').format(date);
+            final isWeekend = dayOfWeek.toLowerCase() == attendanceProv.weekend.toLowerCase();
+
+            // Determine status display category
+            String displayStatus = '';
+            if (status != null) {
+              displayStatus = status;
+            } else if (isWeekend) {
+              displayStatus = 'Weekend';
+            } else if (date.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
+              displayStatus = 'Absent';
+            }
+
+            // Determine color and text color matching the screenshot
+            Color cellBgColor = Colors.grey.withOpacity(0.12);
+            Color textColor = AppColors.textPrimary;
+            Border? border;
+
+            if (displayStatus == 'Present') {
+              cellBgColor = AppColors.success; // Green
+              textColor = Colors.white;
+            } else if (displayStatus == 'Absent') {
+              cellBgColor = AppColors.error; // Red
+              textColor = Colors.white;
+            } else if (displayStatus == 'Leave') {
+              cellBgColor = Colors.purple; // Purple
+              textColor = Colors.white;
+            } else if (displayStatus == 'Weekend') {
+              cellBgColor = Colors.deepPurpleAccent; // Purple/Grey
+              textColor = Colors.white;
+            } else if (displayStatus == 'Holiday') {
+              cellBgColor = Colors.orange; // Orange
+              textColor = Colors.white;
+            } else if (displayStatus == 'Late In' || displayStatus == 'Late') {
+              cellBgColor = Colors.pinkAccent; // Pink/Red
+              textColor = Colors.white;
+            } else if (displayStatus == 'Half Day') {
+              cellBgColor = Colors.blue; // Blue
+              textColor = Colors.white;
+            } else if (displayStatus == 'Tour') {
+              cellBgColor = Colors.indigo; // Indigo
+              textColor = Colors.white;
+            }
+
+            if (isToday) {
+              border = Border.all(color: Colors.redAccent, width: 2.r);
+            }
+
+            final record = _getRecordForDate(date, attendanceProv.records);
+            String leaveTypeName = '';
+            if (displayStatus == 'Leave') {
+              if (record != null && record.leaveType != null) {
+                leaveTypeName = record.leaveType!;
+              } else {
+                // Find in leave requests
+                for (final req in leaveProv.allRequests) {
+                  if (req.status == 'approved' || req.status == 'pending') {
+                    try {
+                      DateTime fromDate;
+                      DateTime toDate;
+                      if (req.fromDate.contains(RegExp(r'[a-zA-Z]'))) {
+                        fromDate = DateFormat('dd MMM yyyy').parse(req.fromDate);
+                      } else {
+                        fromDate = DateFormat('yyyy-MM-dd').parse(req.fromDate);
+                      }
+                      if (req.toDate.contains(RegExp(r'[a-zA-Z]'))) {
+                        toDate = DateFormat('dd MMM yyyy').parse(req.toDate);
+                      } else {
+                        toDate = DateFormat('yyyy-MM-dd').parse(req.toDate);
+                      }
+                      final check = DateTime(date.year, date.month, date.day);
+                      final from = DateTime(fromDate.year, fromDate.month, fromDate.day);
+                      final to = DateTime(toDate.year, toDate.month, toDate.day);
+                      if (!check.isBefore(from) && !check.isAfter(to)) {
+                        leaveTypeName = req.leaveType;
+                        break;
+                      }
+                    } catch (_) {}
+                  }
+                }
+                if (leaveTypeName.isEmpty) {
+                  leaveTypeName = 'Leave';
+                }
+              }
+            }
+
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Container(
+                    width: 30.w,
+                    height: 30.h,
+                    decoration: BoxDecoration(
+                      color: cellBgColor,
+                      shape: BoxShape.circle,
+                      border: border,
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${day.day}',
+                        style: GoogleFonts.poppins(
+                          fontSize: 11.sp,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
                         ),
                       ),
                     ),
-                  );
-                } else {
-                  return Expanded(child: Container());
-                }
-              }),
+                  ),
+                  if (leaveTypeName.isNotEmpty) ...[
+                    SizedBox(height: 1.h),
+                    Text(
+                      leaveTypeName,
+                      style: GoogleFonts.poppins(
+                        fontSize: 7.sp,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.blue,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ],
+              ),
             );
-          }),
-        ],
+          },
+        ),
       ),
     );
   }
 
-  Widget _buildSummaryCards() {
-    int present = 0, absent = 0, leave = 0, holiday = 0, late = 0;
+  Widget _buildSummaryCards(EmployeeAttendanceProvider attendanceProv, LeaveProvider leaveProv) {
+    int present = 0;
+    int absent = 0;
+    int leave = 0;
+    int holiday = 0;
+    int weekend = 0;
+    int lateIn = 0;
+    int tour = 0;
+    int halfDay = 0;
+
     final daysInMonth = DateTime(_currentMonth.year, _currentMonth.month + 1, 0).day;
     final today = DateTime.now();
     final todayDate = DateTime(today.year, today.month, today.day);
@@ -304,19 +477,42 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
       final date = DateTime(_currentMonth.year, _currentMonth.month, i);
       final checkDate = DateTime(date.year, date.month, date.day);
 
-      if (checkDate.isAfter(todayDate)) continue;
+      final status = getStatusForDate(date, attendanceProv, leaveProv);
+      final dayOfWeek = DateFormat('EEEE').format(date);
+      final isWeekend = dayOfWeek.toLowerCase() == attendanceProv.weekend.toLowerCase();
 
-      final status = getStatusForDate(date);
-      if (status == null) continue;
+      String displayStatus = '';
+      if (status != null) {
+        displayStatus = status;
+      } else if (isWeekend) {
+        displayStatus = 'Weekend';
+      } else if (date.isBefore(DateTime.now().subtract(const Duration(days: 1)))) {
+        displayStatus = 'Absent';
+      }
 
-      switch (status) {
+      switch (displayStatus) {
         case 'Present': present++; break;
         case 'Absent': absent++; break;
         case 'Leave': leave++; break;
         case 'Holiday': holiday++; break;
-        case 'Late': late++; break;
+        case 'Weekend': weekend++; break;
+        case 'Late':
+        case 'Late In': lateIn++; break;
+        case 'Tour': tour++; break;
+        case 'Half Day': halfDay++; break;
       }
     }
+
+    final summaryItems = [
+      {'label': 'Present', 'count': present, 'code': 'P', 'color': AppColors.success},
+      {'label': 'Absent', 'count': absent, 'code': 'A', 'color': AppColors.error},
+      {'label': 'On Leave', 'count': leave, 'code': 'L', 'color': Colors.purple},
+      {'label': 'Weekend', 'count': weekend, 'code': 'WE', 'color': Colors.deepPurpleAccent},
+      {'label': 'Holiday', 'count': holiday, 'code': 'H', 'color': Colors.orange},
+      {'label': 'Late In', 'count': lateIn, 'code': 'P', 'color': Colors.pinkAccent},
+      {'label': 'Half Day', 'count': halfDay, 'code': 'hd', 'color': Colors.blue},
+      {'label': 'Tour', 'count': tour, 'code': 'T', 'color': Colors.indigo},
+    ];
 
     return Container(
       margin: EdgeInsets.all(12.r),
@@ -327,52 +523,86 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         border: Border.all(color: AppColors.border),
       ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              _summaryCard('Present', present, AppColors.success, Icons.check_circle),
-              SizedBox(width: 6.w),
-              _summaryCard('Absent', absent, AppColors.error, Icons.cancel),
-              SizedBox(width: 6.w),
-              _summaryCard('Leave', leave, AppColors.secondary, Icons.beach_access),
-            ],
+          Text(
+            'Attendance Summary',
+            style: GoogleFonts.poppins(
+              fontSize: 12.sp,
+              fontWeight: FontWeight.w600,
+              color: AppColors.textPrimary,
+            ),
           ),
-          SizedBox(height: 6.h),
-          Row(
-            children: [
-              _summaryCard('Holiday', holiday, AppColors.info, Icons.celebration),
-              SizedBox(width: 6.w),
-              _summaryCard('Late', late, AppColors.warning, Icons.access_time),
-              SizedBox(width: 6.w),
-              Expanded(child: Container()),
-            ],
+          SizedBox(height: 12.h),
+          ListView.separated(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: summaryItems.length,
+            separatorBuilder: (_, __) => Divider(color: AppColors.border, height: 1.h),
+            itemBuilder: (context, index) {
+              final item = summaryItems[index];
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 8.h),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 28.w,
+                      height: 28.h,
+                      decoration: BoxDecoration(
+                        color: (item['color'] as Color).withOpacity(0.15),
+                        borderRadius: BorderRadius.circular(6.r),
+                        border: Border.all(color: (item['color'] as Color).withOpacity(0.4)),
+                      ),
+                      child: Center(
+                        child: Text(
+                          item['code'] as String,
+                          style: GoogleFonts.poppins(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.bold,
+                            color: item['color'] as Color,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Text(
+                      item['label'] as String,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13.sp,
+                        fontWeight: FontWeight.w500,
+                        color: AppColors.textPrimary,
+                      ),
+                    ),
+                    const Spacer(),
+                    Container(
+                      padding: EdgeInsets.symmetric(horizontal: 10.w, vertical: 4.h),
+                      decoration: BoxDecoration(
+                        color: (item['color'] as Color).withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12.r),
+                      ),
+                      child: Text(
+                        '${item['count']} Day(s)',
+                        style: GoogleFonts.poppins(
+                          fontSize: 12.sp,
+                          fontWeight: FontWeight.bold,
+                          color: item['color'] as Color,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
           ),
         ],
       ),
     );
   }
 
-  Widget _summaryCard(String label, int count, Color color, IconData icon) {
-    return Expanded(
-      child: Container(
-        padding: EdgeInsets.symmetric(vertical: 8.h),
-        decoration: BoxDecoration(color: color.withOpacity(0.1), borderRadius: BorderRadius.circular(10.r)),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 16.sp),
-            SizedBox(height: 2.h),
-            Text('$count', style: GoogleFonts.poppins(fontSize: 14.sp, fontWeight: FontWeight.w700, color: color)),
-            Text(label, style: GoogleFonts.poppins(fontSize: 9.sp, color: AppColors.textSecondary)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildSelectedDateInfo() {
-    final status = getStatusForDate(_selectedDate);
+  Widget _buildSelectedDateInfo(EmployeeAttendanceProvider attendanceProv, LeaveProvider leaveProv) {
+    final status = getStatusForDate(_selectedDate, attendanceProv, leaveProv);
     final statusColor = getStatusColor(status);
-    final isFutureDate = _selectedDate.isAfter(DateTime.now());
+    final isFutureDate = _selectedDate.isAfter(DateTime.now()) && status != 'Leave';
 
     return Container(
       margin: EdgeInsets.fromLTRB(12.r, 0, 12.r, 16.r),
@@ -428,5 +658,24 @@ class _AttendanceCalendarScreenState extends State<AttendanceCalendarScreen> {
         ],
       ),
     );
+  }
+
+  EmployeeAttendanceRecord? _getRecordForDate(DateTime date, List<EmployeeAttendanceRecord> records) {
+    for (final record in records) {
+      try {
+        DateTime recordDate;
+        if (record.date.contains(RegExp(r'[a-zA-Z]'))) {
+          recordDate = DateFormat('dd MMM yyyy').parse(record.date);
+        } else {
+          recordDate = DateFormat('yyyy-MM-dd').parse(record.date);
+        }
+        if (recordDate.year == date.year &&
+            recordDate.month == date.month &&
+            recordDate.day == date.day) {
+          return record;
+        }
+      } catch (_) {}
+    }
+    return null;
   }
 }
