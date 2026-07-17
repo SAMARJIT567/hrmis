@@ -23,6 +23,8 @@ import '../../auth/providers/auth_provider.dart';
 import 'edit_profile_screen.dart';
 import '../providers/profile_provider.dart';
 import '../../admin/screens/office_settings_screen.dart';
+import '../../leave/screens/employee_leave_screen.dart';
+
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -260,6 +262,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _SettingItem(Icons.account_balance_wallet_outlined, 'Leave Balance', AppColors.success, () {
                     Navigator.pushNamed(context, '/leave-balance');
                   }),
+                  if (!isAdmin)
+                    _SettingItem(Icons.event_note_outlined, 'Leave Management', AppColors.primary, () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const EmployeeLeaveScreen()),
+                      );
+                    }),
                 ]),
                 SizedBox(height: 20.h),
 

@@ -19,6 +19,8 @@ import '../providers/employee_attendance_provider.dart';
 import 'attendance_calendar_screen.dart';
 import 'check_in_screen.dart';
 import '../../leave/screens/employee_leave_screen.dart';
+import '../../leave/providers/leave_provider.dart';
+import '../../leave/models/leave_model.dart';
 
 class EmployeeAttendanceScreen extends StatefulWidget {
   const EmployeeAttendanceScreen({super.key});
@@ -29,11 +31,109 @@ class EmployeeAttendanceScreen extends StatefulWidget {
 
 class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   int _visibleCount = 5;
+  late int _leaveFilterMonth;
+  late int _leaveFilterYear;
+  final List<int> _yearsList = [];
+
+  @override
+  void initState() {
+    super.initState();
+    final now = DateTime.now();
+    _leaveFilterMonth = now.month;
+    _leaveFilterYear = now.year;
+  }
+
+  void _initializeYearsList(String? joiningDateStr) {
+    if (_yearsList.isNotEmpty) return;
+    
+    final now = DateTime.now();
+    int startYear = now.year - 2; // Default fallback: last 3 years
+    
+    if (joiningDateStr != null && joiningDateStr.isNotEmpty) {
+      try {
+        final parsed = DateTime.parse(joiningDateStr);
+        startYear = parsed.year;
+      } catch (_) {
+        try {
+          final parsed = DateFormat('dd MMM yyyy').parse(joiningDateStr);
+          startYear = parsed.year;
+        } catch (_) {}
+      }
+    }
+    
+    if (startYear > now.year) {
+      startYear = now.year;
+    }
+    
+    _yearsList.clear();
+    for (int y = now.year; y >= startYear; y--) {
+      _yearsList.add(y);
+    }
+    
+    if (!_yearsList.contains(_leaveFilterYear)) {
+      _leaveFilterYear = _yearsList.first;
+    }
+  }
+
+  List<int> _getActiveMonths(String? joiningDateStr) {
+    int joiningYear = 0;
+    int joiningMonth = 1;
+    
+    if (joiningDateStr != null && joiningDateStr.isNotEmpty) {
+      try {
+        final parsed = DateTime.parse(joiningDateStr);
+        joiningYear = parsed.year;
+        joiningMonth = parsed.month;
+      } catch (_) {
+        try {
+          final parsed = DateFormat('dd MMM yyyy').parse(joiningDateStr);
+          joiningYear = parsed.year;
+          joiningMonth = parsed.month;
+        } catch (_) {}
+      }
+    }
+    
+    if (_leaveFilterYear == joiningYear) {
+      return List.generate(12 - joiningMonth + 1, (index) => joiningMonth + index);
+    }
+    
+    return List.generate(12, (index) => index + 1);
+  }
+
+  DateTime? _parseAnyDate(String dateStr) {
+    if (dateStr.isEmpty) return null;
+    try {
+      if (dateStr.contains(RegExp(r'[a-zA-Z]'))) {
+        return DateFormat('dd MMM yyyy').parse(dateStr);
+      } else {
+        return DateFormat('yyyy-MM-dd').parse(dateStr);
+      }
+    } catch (_) {
+      try {
+        return DateTime.parse(dateStr);
+      } catch (_) {
+        return null;
+      }
+    }
+  }
+
+  bool _isLeaveInPeriod(LeaveRequest request, int month, int year) {
+    final fromDate = _parseAnyDate(request.fromDate);
+    final toDate = _parseAnyDate(request.toDate);
+    if (fromDate == null || toDate == null) return false;
+    
+    final startOfMonth = DateTime(year, month, 1);
+    final endOfMonth = DateTime(year, month + 1, 0, 23, 59, 59);
+    
+    return fromDate.isBefore(endOfMonth.add(const Duration(days: 1))) &&
+           toDate.isAfter(startOfMonth.subtract(const Duration(days: 1)));
+  }
 
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     final user = auth.currentUser;
+    _initializeYearsList(user?.joiningDate);
 
     return Scaffold(
       backgroundColor: AppColors.background,
@@ -47,6 +147,7 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
                 _buildTodayCard(context),
                 _buildQuickActions(context),
                 _buildStatsRow(),
+                _buildLeaveOverviewSection(context),
                 _buildHistoryTitle(),
                 _buildAttendanceHistory(context),
                 SizedBox(height: 20.h),
@@ -336,6 +437,37 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
   Widget _buildStatsRow() {
     return Consumer<EmployeeAttendanceProvider>(
       builder: (_, provider, __) {
+        final now = DateTime.now();
+        int yearlyPresent = provider.records.where((r) {
+          try {
+            DateTime recordDate;
+            if (r.date.contains(RegExp(r'[a-zA-Z]'))) {
+              recordDate = DateFormat('dd MMM yyyy').parse(r.date);
+            } else {
+              recordDate = DateFormat('yyyy-MM-dd').parse(r.date);
+            }
+            return recordDate.year == now.year &&
+                (r.status == 'Present' || r.status == 'Late' || r.status == 'Late In' || r.status == 'Half Day' || r.status == 'Tour' || r.status == 'Early Out');
+          } catch (_) {
+            return false;
+          }
+        }).length;
+
+        int yearlyLate = provider.records.where((r) {
+          try {
+            DateTime recordDate;
+            if (r.date.contains(RegExp(r'[a-zA-Z]'))) {
+              recordDate = DateFormat('dd MMM yyyy').parse(r.date);
+            } else {
+              recordDate = DateFormat('yyyy-MM-dd').parse(r.date);
+            }
+            return recordDate.year == now.year &&
+                (r.status == 'Late' || r.status == 'Late In');
+          } catch (_) {
+            return false;
+          }
+        }).length;
+
         return Container(
           margin: EdgeInsets.symmetric(horizontal: 16.r),
           padding: EdgeInsets.all(16.r),
@@ -346,9 +478,9 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
           ),
           child: Row(
             children: [
-              _statItem('Present', provider.presentCount, AppColors.success),
+              _statItem('Present (Yearly)', yearlyPresent, AppColors.success),
               _statDivider(),
-              _statItem('Late', provider.lateCount, AppColors.warning),
+              _statItem('Late (Yearly)', yearlyLate, AppColors.warning),
             ],
           ),
         );
@@ -637,6 +769,324 @@ class _EmployeeAttendanceScreenState extends State<EmployeeAttendanceScreen> {
           ),
         );
       },
+    );
+  }
+
+  Widget _buildLeaveOverviewSection(BuildContext context) {
+    final leaveProv = context.watch<LeaveProvider>();
+    final auth = context.watch<AuthProvider>();
+    final user = auth.currentUser;
+
+    if (leaveProv.isLoading || leaveProv.policies.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    final myRequests = leaveProv.allRequests.where((r) => r.employeeId == user?.id).toList();
+    final myCompOffs = leaveProv.compOffReports.where((c) => c.employeeId == user?.id && c.status == 'approved').toList();
+
+    final activeMonths = _getActiveMonths(user?.joiningDate);
+    if (!activeMonths.contains(_leaveFilterMonth)) {
+      _leaveFilterMonth = activeMonths.first;
+    }
+
+    // 1. Calculate General Period Stats
+    double periodTaken = 0.0;
+    for (var r in myRequests) {
+      if (r.status == 'approved' || r.status == 'closed') {
+        if (_isLeaveInPeriod(r, _leaveFilterMonth, _leaveFilterYear)) {
+          periodTaken += r.days;
+        }
+      }
+    }
+
+    // 2. Calculate Total Allowed & Remaining (All policies combined)
+    int totalAllowed = 0;
+    int totalUsed = 0;
+    for (var p in leaveProv.policies) {
+      int allowed = p.totalDays;
+      if (p.id == 'CO') {
+        allowed += myCompOffs.length;
+      }
+      totalAllowed += allowed;
+      totalUsed += p.usedDays;
+    }
+    int totalRemaining = totalAllowed - totalUsed;
+    if (totalRemaining < 0) totalRemaining = 0;
+
+    final selectedMonthName = DateFormat('MMM').format(DateTime(2026, _leaveFilterMonth, 1));
+
+    return Container(
+      margin: EdgeInsets.fromLTRB(16.w, 8.h, 16.w, 16.h),
+      padding: EdgeInsets.all(16.r),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20.r),
+        boxShadow: const [
+          BoxShadow(color: AppColors.shadow, blurRadius: 10, offset: Offset(0, 2))
+        ],
+        border: Border.all(color: AppColors.border.withOpacity(0.5)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Header: My Leaves & Dropdowns
+          Row(
+            children: [
+              Text(
+                'My Leaves',
+                style: GoogleFonts.poppins(
+                  fontSize: 15.sp,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textPrimary,
+                ),
+              ),
+              const Spacer(),
+              // Month Selector Dropdown
+              Container(
+                height: 28.h,
+                padding: EdgeInsets.symmetric(horizontal: 8.w),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _leaveFilterMonth,
+                    icon: Icon(Icons.arrow_drop_down, color: AppColors.textSecondary, size: 16.sp),
+                    style: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    items: activeMonths.map((m) {
+                      final name = DateFormat('MMM').format(DateTime(2026, m, 1));
+                      return DropdownMenuItem<int>(
+                        value: m,
+                        child: Text(name),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _leaveFilterMonth = val;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(width: 6.w),
+              // Year Selector Dropdown
+              Container(
+                height: 28.h,
+                padding: EdgeInsets.symmetric(horizontal: 8.w),
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceVariant,
+                  borderRadius: BorderRadius.circular(8.r),
+                  border: Border.all(color: AppColors.border),
+                ),
+                child: DropdownButtonHideUnderline(
+                  child: DropdownButton<int>(
+                    value: _leaveFilterYear,
+                    icon: Icon(Icons.arrow_drop_down, color: AppColors.textSecondary, size: 16.sp),
+                    style: GoogleFonts.poppins(fontSize: 10.sp, fontWeight: FontWeight.w600, color: AppColors.textPrimary),
+                    items: _yearsList.map((y) {
+                      return DropdownMenuItem<int>(
+                        value: y,
+                        child: Text('$y'),
+                      );
+                    }).toList(),
+                    onChanged: (val) {
+                      if (val != null) {
+                        setState(() {
+                          _leaveFilterYear = val;
+                        });
+                      }
+                    },
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 12.h),
+
+          // Overview Stats Row
+          IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                _buildOverviewStatCard(
+                  'Taken in $selectedMonthName',
+                  '${periodTaken % 1 == 0 ? periodTaken.toInt() : periodTaken}',
+                  AppColors.warning,
+                ),
+                SizedBox(width: 8.w),
+                _buildOverviewStatCard(
+                  'Remaining Total',
+                  '$totalRemaining',
+                  AppColors.success,
+                ),
+                SizedBox(width: 8.w),
+                _buildOverviewStatCard(
+                  'Allowed Yearly',
+                  '$totalAllowed',
+                  AppColors.primary,
+                ),
+              ],
+            ),
+          ),
+          SizedBox(height: 16.h),
+
+          // Divider
+          Container(height: 1, color: AppColors.border.withOpacity(0.5)),
+          SizedBox(height: 12.h),
+
+          // Title for detailed balances
+          Text(
+            'Leave Type Details',
+            style: GoogleFonts.poppins(
+              fontSize: 11.sp,
+              fontWeight: FontWeight.w800,
+              color: AppColors.textTertiary,
+              letterSpacing: 0.5,
+            ),
+          ),
+          SizedBox(height: 8.h),
+
+          ListView.builder(
+            shrinkWrap: true,
+            padding: EdgeInsets.zero,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: leaveProv.policies.length,
+            itemBuilder: (ctx, idx) {
+              final policy = leaveProv.policies[idx];
+              int allowed = policy.totalDays;
+              if (policy.id == 'CO') {
+                allowed += myCompOffs.length;
+              }
+              int remaining = allowed - policy.usedDays;
+              if (remaining < 0) remaining = 0;
+
+              double periodTakenForType = 0.0;
+              for (var r in myRequests) {
+                if (r.leaveType.toLowerCase() == policy.title.toLowerCase() &&
+                    (r.status == 'approved' || r.status == 'closed')) {
+                  if (_isLeaveInPeriod(r, _leaveFilterMonth, _leaveFilterYear)) {
+                    periodTakenForType += r.days;
+                  }
+                }
+              }
+
+              final progress = allowed > 0 ? (remaining / allowed) : 0.0;
+              final color = Color(policy.colorValue);
+
+              return Padding(
+                padding: EdgeInsets.symmetric(vertical: 6.h),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: EdgeInsets.all(6.r),
+                          decoration: BoxDecoration(
+                            color: color.withOpacity(0.12),
+                            borderRadius: BorderRadius.circular(8.r),
+                          ),
+                          child: Icon(
+                            AppHelpers.getLeaveIcon(policy.iconName),
+                            color: color,
+                            size: 14.sp,
+                          ),
+                        ),
+                        SizedBox(width: 8.w),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                policy.title,
+                                style: GoogleFonts.poppins(
+                                  fontSize: 11.sp,
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textPrimary,
+                                ),
+                              ),
+                              Text(
+                                'Taken in $selectedMonthName: ${periodTakenForType % 1 == 0 ? periodTakenForType.toInt() : periodTakenForType}  |  Total Allowed: $allowed',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 9.sp,
+                                  color: AppColors.textSecondary,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Text(
+                          '$remaining Left',
+                          style: GoogleFonts.poppins(
+                            fontSize: 11.sp,
+                            fontWeight: FontWeight.w800,
+                            color: color,
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: 6.h),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(4.r),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: color.withOpacity(0.1),
+                        color: color,
+                        minHeight: 4.h,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOverviewStatCard(String label, String value, Color color) {
+    return Expanded(
+      child: Container(
+        padding: EdgeInsets.all(10.r),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.06),
+          borderRadius: BorderRadius.circular(12.r),
+          border: Border.all(color: color.withOpacity(0.15)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              value,
+              style: GoogleFonts.poppins(
+                fontSize: 18.sp,
+                fontWeight: FontWeight.w800,
+                color: color,
+                height: 1.1,
+              ),
+            ),
+            SizedBox(height: 2.h),
+            Expanded(
+              child: Text(
+                label,
+                style: GoogleFonts.poppins(
+                  fontSize: 9.sp,
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textSecondary,
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 

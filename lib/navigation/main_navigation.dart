@@ -16,7 +16,6 @@ import '../features/attendance/screens/attendance_screen.dart';
 import '../features/attendance/screens/employee_attendance_screen.dart';
 import '../features/attendance/screens/attendance_calendar_screen.dart';
 import '../features/leave/screens/leave_screen.dart';
-import '../features/leave/screens/employee_leave_screen.dart';
 import '../features/profile/screens/profile_screen.dart';
 import '../core/providers/navigation_provider.dart';
 
@@ -56,17 +55,15 @@ class _MainNavigationState extends State<MainNavigation> {
       _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
     ];
 
-    // Employee Screens - 4 TABS
+    // Employee Screens - 3 TABS
     _employeeScreens = [
       const EmployeeAttendanceScreen(),
       const AttendanceCalendarScreen(),
-      const EmployeeLeaveScreen(),
       const ProfileScreen(),
     ];
     _employeeNavItems = const [
       _NavItem(icon: Icons.dashboard_outlined, activeIcon: Icons.dashboard, label: 'Dashboard'),
       _NavItem(icon: Icons.calendar_month_outlined, activeIcon: Icons.calendar_month, label: 'Calendar'),
-      _NavItem(icon: Icons.event_note_outlined, activeIcon: Icons.event_note, label: 'Leave'),
       _NavItem(icon: Icons.person_outline, activeIcon: Icons.person, label: 'Profile'),
     ];
   }
