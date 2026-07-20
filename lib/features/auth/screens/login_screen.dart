@@ -9,6 +9,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_screenutil/flutter_screenutil.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import 'dart:ui';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../providers/auth_provider.dart';
 import '../../../core/constants/app_colors.dart';
@@ -27,8 +28,8 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen>
     with SingleTickerProviderStateMixin {
   final _formKey = GlobalKey<FormState>();
-  final _emailCtrl = TextEditingController(text: 'admin@hrmis.com');
-  final _passwordCtrl = TextEditingController(text: 'password123');
+  final _emailCtrl = TextEditingController();
+  final _passwordCtrl = TextEditingController();
   bool _rememberMe = false;
 
   late AnimationController _animController;
@@ -57,107 +58,6 @@ class _LoginScreenState extends State<LoginScreen>
     super.dispose();
   }
 
-  Future<void> _showSettingsDialog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final currentUrl = prefs.getString('custom_api_url') ?? ApiService().baseUrl;
-    final controller = TextEditingController(text: currentUrl);
-
-    if (!mounted) return;
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          backgroundColor: AppColors.surface,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16.r),
-          ),
-          title: Text(
-            'Server Settings',
-            style: GoogleFonts.poppins(
-              fontWeight: FontWeight.w600,
-              color: AppColors.textPrimary,
-            ),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Configure the Laravel backend API base URL for this device.',
-                style: GoogleFonts.poppins(
-                  fontSize: 12.sp,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              SizedBox(height: 16.h),
-              CustomTextField(
-                controller: controller,
-                label: 'Backend URL',
-                hint: 'http://192.168.1.100:8000/api',
-                prefixIcon: Icons.lan_rounded,
-                validator: (val) {
-                  if (val == null || val.trim().isEmpty) {
-                    return 'URL cannot be empty';
-                  }
-                  if (!val.startsWith('http://') && !val.startsWith('https://')) {
-                    return 'Must start with http:// or https://';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(
-                'Cancel',
-                style: GoogleFonts.poppins(
-                  color: AppColors.textSecondary,
-                ),
-              ),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                final newUrl = controller.text.trim();
-                if (newUrl.isEmpty || (!newUrl.startsWith('http://') && !newUrl.startsWith('https://'))) {
-                  return;
-                }
-                final localPrefs = await SharedPreferences.getInstance();
-                await localPrefs.setString('custom_api_url', newUrl);
-                ApiService().updateBaseUrl(newUrl);
-
-                if (context.mounted) {
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('API Base URL updated to $newUrl'),
-                      backgroundColor: AppColors.success,
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8.r),
-                ),
-              ),
-              child: Text(
-                'Save',
-                style: GoogleFonts.poppins(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   Future<void> _handleLogin() async {
     if (!(_formKey.currentState?.validate() ?? false)) return;
 
@@ -182,15 +82,7 @@ class _LoginScreenState extends State<LoginScreen>
       body: Stack(
         children: [
           _buildBackground(),
-          Positioned(
-            top: MediaQuery.of(context).padding.top + 8,
-            right: 16,
-            child: IconButton(
-              icon: const Icon(Icons.settings_outlined, color: Colors.white),
-              onPressed: _showSettingsDialog,
-              tooltip: 'Server Settings',
-            ),
-          ),
+
           SafeArea(
             child: SingleChildScrollView(
               physics: const BouncingScrollPhysics(),
@@ -204,7 +96,7 @@ class _LoginScreenState extends State<LoginScreen>
                       children: [
                         SizedBox(height: 48.h),
                         _buildLogoSection(),
-                        SizedBox(height: 40.h),
+                        SizedBox(height: 52.h),
                         _buildFormCard(),
                         SizedBox(height: 20.h),
                       ],
@@ -217,10 +109,50 @@ class _LoginScreenState extends State<LoginScreen>
           Consumer<AuthProvider>(
             builder: (_, auth, __) {
               if (!auth.isLoading) return const SizedBox.shrink();
-              return Container(
-                color: Colors.black.withOpacity(0.4),
-                child: const Center(
-                  child: CircularProgressIndicator(color: AppColors.primary),
+              return Positioned.fill(
+                child: ClipRect(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                    child: Container(
+                      color: Colors.white.withOpacity(0.85), // White glassmorphic overlay
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SizedBox(
+                              width: 56.w,
+                              height: 56.h,
+                              child: const CircularProgressIndicator(
+                                color: AppColors.primary,
+                                strokeWidth: 3.5,
+                              ),
+                            ),
+                            SizedBox(height: 24.h),
+                            Text(
+                              'Logging in...',
+                              style: GoogleFonts.poppins(
+                                color: AppColors.textPrimary,
+                                fontSize: 16.sp,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.5,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                            SizedBox(height: 6.h),
+                            Text(
+                              'Please wait while we sync your profile settings',
+                              style: GoogleFonts.poppins(
+                                color: AppColors.textSecondary,
+                                fontSize: 11.5.sp,
+                                fontWeight: FontWeight.w400,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
                 ),
               );
             },
@@ -232,7 +164,7 @@ class _LoginScreenState extends State<LoginScreen>
 
   Widget _buildBackground() {
     return Container(
-      height: 280.h,
+      height: 310.h,
       decoration: const BoxDecoration(
         gradient: AppColors.headerGradient,
         borderRadius: BorderRadius.only(
@@ -318,7 +250,38 @@ class _LoginScreenState extends State<LoginScreen>
                 color: AppColors.textSecondary,
               ),
             ),
-            SizedBox(height: 28.h),
+            SizedBox(height: 16.h),
+            Consumer<AuthProvider>(
+              builder: (_, auth, __) {
+                if (auth.errorMessage == null) return const SizedBox.shrink();
+                return Container(
+                  margin: EdgeInsets.only(bottom: 16.h),
+                  padding: EdgeInsets.symmetric(horizontal: 14.w, vertical: 12.h),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFFDE8E8),
+                    borderRadius: BorderRadius.circular(12.r),
+                    border: Border.all(color: const Color(0xFFF8B4B4)),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning_amber_rounded, color: const Color(0xFFE53E3E), size: 22.sp),
+                      SizedBox(width: 10.w),
+                      Expanded(
+                        child: Text(
+                          auth.errorMessage!,
+                          style: GoogleFonts.poppins(
+                            color: const Color(0xFF9B2C2C),
+                            fontSize: 12.5.sp,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            ),
+            SizedBox(height: 12.h),
             CustomTextField(
               label: 'Email / Employee Code',
               hint: 'Enter your email or employee code',
@@ -426,42 +389,7 @@ class _LoginScreenState extends State<LoginScreen>
                 prefixIcon: Icons.login_rounded,
               ),
             ),
-            SizedBox(height: 20.h),
-            Container(
-              padding: EdgeInsets.all(12.r),
-              decoration: BoxDecoration(
-                color: AppColors.primarySurface,
-                borderRadius: BorderRadius.circular(10.r),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.info_outline, color: AppColors.primary, size: 14.sp),
-                      SizedBox(width: 8.w),
-                      Text(
-                        'Demo Credentials:',
-                        style: GoogleFonts.poppins(
-                          fontSize: 12.sp,
-                          fontWeight: FontWeight.w600,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                  SizedBox(height: 6.h),
-                  Text(
-                    'Admin: admin@hrmis.com / password123',
-                    style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.primary),
-                  ),
-                  Text(
-                    'Employee: user@hrmis.com / password123',
-                    style: GoogleFonts.poppins(fontSize: 10.sp, color: AppColors.primary),
-                  ),
-                ],
-              ),
-            ),
+
           ],
         ),
       ),

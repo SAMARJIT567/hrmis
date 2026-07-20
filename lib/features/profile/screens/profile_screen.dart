@@ -20,10 +20,11 @@ import '../../../core/constants/app_dimensions.dart';
 import '../../../core/utils/helpers.dart';
 import '../../../core/providers/navigation_provider.dart';
 import '../../auth/providers/auth_provider.dart';
-import 'edit_profile_screen.dart';
-import '../providers/profile_provider.dart';
 import '../../admin/screens/office_settings_screen.dart';
+import '../../admin/screens/location_settings_screen.dart';
 import '../../leave/screens/employee_leave_screen.dart';
+import '../../../core/services/api_service.dart';
+import '../../../core/services/device_info_service.dart';
 
 
 class ProfileScreen extends StatefulWidget {
@@ -262,13 +263,17 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   _SettingItem(Icons.account_balance_wallet_outlined, 'Leave Balance', AppColors.success, () {
                     Navigator.pushNamed(context, '/leave-balance');
                   }),
-                  if (!isAdmin)
+                  if (!isAdmin) ...[
                     _SettingItem(Icons.event_note_outlined, 'Leave Management', AppColors.primary, () {
                       Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const EmployeeLeaveScreen()),
                       );
                     }),
+                    _SettingItem(Icons.phonelink_setup_rounded, 'Request Device Change', AppColors.warning, () {
+                      _showDeviceChangeDialog(context, user);
+                    }),
+                  ],
                 ]),
                 SizedBox(height: 20.h),
 
@@ -283,6 +288,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
                       () => Navigator.push(
                         context,
                         MaterialPageRoute(builder: (_) => const OfficeSettingsScreen()),
+                      ),
+                    ),
+                    _SettingItem(
+                      Icons.location_on_outlined,
+                      'Location Settings',
+                      AppColors.success,
+                      () => Navigator.push(
+                        context,
+                        MaterialPageRoute(builder: (_) => const LocationSettingsScreen()),
                       ),
                     ),
                   ]),
@@ -703,6 +717,287 @@ class _ProfileScreenState extends State<ProfileScreen> {
             SizedBox(width: 8.w),
             Text('Logout', style: GoogleFonts.poppins(fontSize: 15.sp, fontWeight: FontWeight.w600, color: AppColors.error)),
           ],
+        ),
+      ),
+    );
+  }
+
+  void _showDeviceChangeDialog(BuildContext context, AuthUser? user) {
+    final reasonController = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24.r)),
+          backgroundColor: Colors.white,
+          surfaceTintColor: Colors.white,
+          contentPadding: EdgeInsets.fromLTRB(20.w, 20.h, 20.w, 16.h),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header Icon & Title
+                Row(
+                  children: [
+                    Container(
+                      padding: EdgeInsets.all(12.r),
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          colors: [
+                            AppColors.warning.withOpacity(0.15),
+                            AppColors.warning.withOpacity(0.05),
+                          ],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                        ),
+                        borderRadius: BorderRadius.circular(16.r),
+                        border: Border.all(color: AppColors.warning.withOpacity(0.3)),
+                      ),
+                      child: Icon(Icons.phonelink_setup_rounded, color: AppColors.warning, size: 28.sp),
+                    ),
+                    SizedBox(width: 14.w),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Request Device Change',
+                            style: GoogleFonts.poppins(
+                              fontSize: 17.sp,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textPrimary,
+                            ),
+                          ),
+                          SizedBox(height: 2.h),
+                          Text(
+                            'Notify Admin to unbind your phone',
+                            style: GoogleFonts.poppins(
+                              fontSize: 11.sp,
+                              color: AppColors.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 20.h),
+
+                // Currently Registered Device Details Card
+                Text(
+                  'Currently Registered Device',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+
+                FutureBuilder<DeviceDetails>(
+                  future: DeviceInfoService.getDeviceDetails(),
+                  builder: (context, snapshot) {
+                    final currentHardwareName = snapshot.data?.deviceName;
+                    final displayDeviceName = (user?.deviceName != null && user!.deviceName!.isNotEmpty)
+                        ? user.deviceName!
+                        : (currentHardwareName ?? 'Primary Mobile Device');
+
+                    return Container(
+                      width: double.infinity,
+                      padding: EdgeInsets.all(12.r),
+                      decoration: BoxDecoration(
+                        color: AppColors.primary.withOpacity(0.04),
+                        borderRadius: BorderRadius.circular(16.r),
+                        border: Border.all(color: AppColors.primary.withOpacity(0.15)),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: EdgeInsets.all(10.r),
+                            decoration: BoxDecoration(
+                              color: AppColors.primary.withOpacity(0.1),
+                              shape: BoxShape.circle,
+                            ),
+                            child: Icon(
+                              displayDeviceName.toLowerCase().contains('iphone') || displayDeviceName.toLowerCase().contains('ios')
+                                  ? Icons.phone_iphone_rounded
+                                  : Icons.phone_android_rounded,
+                              size: 22.sp,
+                              color: AppColors.primary,
+                            ),
+                          ),
+                          SizedBox(width: 12.w),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  displayDeviceName,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14.sp,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppColors.textPrimary,
+                                  ),
+                                ),
+                                SizedBox(height: 2.h),
+                                Row(
+                                  children: [
+                                    Container(
+                                      width: 6.w,
+                                      height: 6.h,
+                                      decoration: const BoxDecoration(
+                                        color: AppColors.success,
+                                        shape: BoxShape.circle,
+                                      ),
+                                    ),
+                                    SizedBox(width: 6.w),
+                                    Text(
+                                      user?.registeredDeviceId != null
+                                          ? 'Active & Bound'
+                                          : 'Currently Active Device',
+                                      style: GoogleFonts.poppins(
+                                        fontSize: 11.sp,
+                                        fontWeight: FontWeight.w500,
+                                        color: AppColors.success,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 18.h),
+
+                // Reason Input Field
+                Text(
+                  'Reason for Device Change',
+                  style: GoogleFonts.poppins(
+                    fontSize: 12.sp,
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textSecondary,
+                    letterSpacing: 0.3,
+                  ),
+                ),
+                SizedBox(height: 8.h),
+
+                TextField(
+                  controller: reasonController,
+                  maxLines: 3,
+                  style: GoogleFonts.poppins(fontSize: 13.sp, color: AppColors.textPrimary),
+                  decoration: InputDecoration(
+                    hintText: 'e.g., Purchased new smartphone, old device broken/lost...',
+                    hintStyle: GoogleFonts.poppins(fontSize: 12.sp, color: AppColors.textTertiary),
+                    filled: true,
+                    fillColor: AppColors.background,
+                    contentPadding: EdgeInsets.all(14.r),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14.r),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14.r),
+                      borderSide: BorderSide(color: AppColors.border),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(14.r),
+                      borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                    ),
+                  ),
+                ),
+                SizedBox(height: 22.h),
+
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: isSubmitting ? null : () => Navigator.pop(ctx),
+                        style: TextButton.styleFrom(
+                          padding: EdgeInsets.symmetric(vertical: 12.h),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12.r),
+                            side: BorderSide(color: AppColors.border),
+                          ),
+                        ),
+                        child: Text(
+                          'Cancel',
+                          style: GoogleFonts.poppins(
+                            fontSize: 13.sp,
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: 12.w),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: isSubmitting
+                            ? null
+                            : () async {
+                                final reason = reasonController.text.trim();
+                                if (reason.isEmpty) {
+                                  AppHelpers.showError(ctx, 'Please enter a reason for device change');
+                                  return;
+                                }
+                                setDialogState(() {
+                                  isSubmitting = true;
+                                });
+                                try {
+                                  await ApiService().requestDeviceChange(reason: reason);
+                                  if (context.mounted) {
+                                    Navigator.pop(ctx);
+                                    AppHelpers.showSuccess(
+                                      context,
+                                      'Device change request sent to Admin successfully!',
+                                    );
+                                  }
+                                } catch (e) {
+                                  setDialogState(() {
+                                    isSubmitting = false;
+                                  });
+                                  if (ctx.mounted) {
+                                    AppHelpers.showError(ctx, e.toString());
+                                  }
+                                }
+                              },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppColors.primary,
+                          foregroundColor: Colors.white,
+                          elevation: 2,
+                          shadowColor: AppColors.primary.withOpacity(0.3),
+                          padding: EdgeInsets.symmetric(vertical: 12.h),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12.r)),
+                        ),
+                        child: isSubmitting
+                            ? SizedBox(
+                                width: 18.w,
+                                height: 18.h,
+                                child: const CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                              )
+                            : Text(
+                                'Submit Request',
+                                style: GoogleFonts.poppins(
+                                  fontSize: 13.sp,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

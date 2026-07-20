@@ -8,7 +8,10 @@ class AppConfig {
     const String ip = '192.168.0.237';
     if (kIsWeb) {
       return 'http://localhost:8000/api';
-    } else if (Platform.isAndroid || Platform.isIOS) {
+    } else if (Platform.isAndroid) {
+      // Using local network IP instead of 127.0.0.1 for standalone builds
+      return 'http://$ip:8000/api';
+    } else if (Platform.isIOS) {
       return 'http://$ip:8000/api';
     } else {
       return 'http://$ip:8000/api';
@@ -19,7 +22,10 @@ class AppConfig {
     const String ip = '192.168.0.237';
     if (kIsWeb) {
       return 'http://localhost:8001/api';
-    } else if (Platform.isAndroid || Platform.isIOS) {
+    } else if (Platform.isAndroid) {
+      // Using local network IP instead of 127.0.0.1 for standalone builds
+      return 'http://$ip:8001/api';
+    } else if (Platform.isIOS) {
       return 'http://$ip:8001/api';
     } else {
       return 'http://$ip:8001/api';

@@ -6,6 +6,7 @@ import 'dart:developer';
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
+import 'device_info_service.dart';
 
 class ApiService {
   static final ApiService _instance = ApiService._internal();
@@ -18,12 +19,34 @@ class ApiService {
   String? _customBaseUrl;
 
   String get baseUrl => _customBaseUrl ?? AppConfig.apiBaseUrl;
-  String get leaveBaseUrl => AppConfig.leaveApiBaseUrl;
+  String get leaveBaseUrl {
+    if (_customBaseUrl != null) {
+      return _getLeaveUrlFromMainUrl(_customBaseUrl!);
+    }
+    return AppConfig.leaveApiBaseUrl;
+  }
+
+  String _getLeaveUrlFromMainUrl(String mainUrl) {
+    try {
+      final uri = Uri.parse(mainUrl);
+      if (uri.port == 8000) {
+        return uri.replace(port: 8001).toString();
+      }
+      return mainUrl.replaceAll(':8000', ':8001');
+    } catch (_) {
+      return AppConfig.leaveApiBaseUrl;
+    }
+  }
 
   void updateBaseUrl(String newUrl) {
     _customBaseUrl = newUrl;
     _dio.options.baseUrl = newUrl;
+    
+    final leaveUrl = _getLeaveUrlFromMainUrl(newUrl);
+    _leaveDio.options.baseUrl = leaveUrl;
+    
     log('Main API Base URL updated to: $newUrl');
+    log('Leave API Base URL updated to: $leaveUrl');
   }
 
   void init() {
@@ -80,6 +103,7 @@ class ApiService {
     // Token Interceptor
     dioInstance.interceptors.add(InterceptorsWrapper(
       onRequest: (options, handler) async {
+        options.headers['Accept'] = 'application/json';
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString('jwt_token');
         if (token != null && token.isNotEmpty) {
@@ -88,7 +112,7 @@ class ApiService {
         return handler.next(options);
       },
       onError: (error, handler) async {
-        if (error.response?.statusCode == 401) {
+        if (error.response?.statusCode == 401 || error.response?.statusCode == 403) {
           final prefs = await SharedPreferences.getInstance();
           await prefs.remove('jwt_token');
           await prefs.remove('user_data');
@@ -104,9 +128,15 @@ class ApiService {
     required String password,
   }) async {
     try {
+      final deviceDetails = await DeviceInfoService.getDeviceDetails();
       final response = await _dio.post(
         '/login',
-        data: {'email': email, 'password': password},
+        data: {
+          'email': email,
+          'password': password,
+          'device_id': deviceDetails.deviceId,
+          'device_name': deviceDetails.deviceName,
+        },
       );
       return response.data;
     } on DioException catch (e) {
@@ -168,12 +198,16 @@ class ApiService {
     String? zoneId,
   }) async {
     try {
+      final deviceDetails = await DeviceInfoService.getDeviceDetails();
       final Map<String, dynamic> fields = {
         'type': type,
         'latitude': latitude,
         'longitude': longitude,
         'timestamp': DateTime.now().toString().substring(0, 19),
         'zone_id': zoneId ?? '1',
+        'device_id': deviceDetails.deviceId,
+        'device_name': deviceDetails.deviceName,
+        'imei': deviceDetails.deviceId,
       };
 
       FormData formData = FormData.fromMap(fields);
@@ -198,9 +232,26 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> getZones() async {
+  Future<Map<String, dynamic>> getZones({bool all = false}) async {
     try {
-      final response = await _dio.get('/zones');
+      final response = await _dio.get('/zones', queryParameters: all ? {'all': 'true'} : null);
+      return response.data;
+    } on DioException catch (e) {
+      throw _handleError(e);
+    }
+  }
+
+  Future<Map<String, dynamic>> requestDeviceChange({required String reason}) async {
+    try {
+      final deviceDetails = await DeviceInfoService.getDeviceDetails();
+      final response = await _dio.post(
+        '/request-device-change',
+        data: {
+          'reason': reason,
+          'new_device_id': deviceDetails.deviceId,
+          'new_device_name': deviceDetails.deviceName,
+        },
+      );
       return response.data;
     } on DioException catch (e) {
       throw _handleError(e);

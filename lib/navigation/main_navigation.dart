@@ -73,6 +73,12 @@ class _MainNavigationState extends State<MainNavigation> {
     final auth = context.watch<AuthProvider>();
     final navProv = context.watch<NavigationProvider>();
     final isAdmin = auth.isAdmin;
+
+    if (!auth.isLoggedIn) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      });
+    }
     
     final navItems = isAdmin ? _adminNavItems : _employeeNavItems;
     final screens = isAdmin ? _adminScreens : _employeeScreens;

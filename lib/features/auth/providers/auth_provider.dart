@@ -1,9 +1,11 @@
 // 📁 lib/features/auth/providers/auth_provider.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../../core/services/api_service.dart';
+import '../../../core/services/device_info_service.dart';
 
 class AuthUser {
   final String id;
@@ -19,6 +21,10 @@ class AuthUser {
   final bool isActive;
   final String? joiningDate;
   final String? employeeType;
+  final String? zoneIds;
+  final String? noZoneRequired;
+  final String? registeredDeviceId;
+  final String? deviceName;
 
   const AuthUser({
     required this.id,
@@ -34,6 +40,10 @@ class AuthUser {
     this.isActive = true,
     this.joiningDate,
     this.employeeType,
+    this.zoneIds,
+    this.noZoneRequired,
+    this.registeredDeviceId,
+    this.deviceName,
   });
 
   factory AuthUser.fromJson(Map<String, dynamic> json) {
@@ -75,6 +85,10 @@ class AuthUser {
       isActive: json['is_active'] == 1 || json['is_active'] == true || json['is_active'] == '1',
       joiningDate: json['joining_date'],
       employeeType: json['employee_type'] ?? json['appointment_type'],
+      zoneIds: json['zone_ids']?.toString(),
+      noZoneRequired: json['no_zone_required']?.toString(),
+      registeredDeviceId: json['registered_device_id']?.toString(),
+      deviceName: json['device_name']?.toString(),
     );
   }
 
@@ -92,6 +106,10 @@ class AuthUser {
     'is_active': isActive,
     'joining_date': joiningDate,
     'employee_type': employeeType,
+    'zone_ids': zoneIds,
+    'no_zone_required': noZoneRequired,
+    'registered_device_id': registeredDeviceId,
+    'device_name': deviceName,
   };
 }
 
@@ -121,6 +139,22 @@ class AuthProvider extends ChangeNotifier {
     _apiService.init();
   }
 
+  Timer? _deviceCheckTimer;
+
+  void _startDeviceCheckTimer() {
+    _deviceCheckTimer?.cancel();
+    _deviceCheckTimer = Timer.periodic(const Duration(seconds: 5), (_) {
+      if (_isLoggedIn && !isAdmin) {
+        fetchProfile(silent: true);
+      }
+    });
+  }
+
+  void _stopDeviceCheckTimer() {
+    _deviceCheckTimer?.cancel();
+    _deviceCheckTimer = null;
+  }
+
   Future<void> _checkSession() async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString('jwt_token');
@@ -132,6 +166,7 @@ class AuthProvider extends ChangeNotifier {
         final Map<String, dynamic> data = jsonDecode(userJson) as Map<String, dynamic>;
         _currentUser = AuthUser.fromJson(data);
         _isLoggedIn = true;
+        _startDeviceCheckTimer();
         notifyListeners();
       } catch (e) {
         // Invalid stored data
@@ -141,6 +176,7 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _clearSession() async {
+    _stopDeviceCheckTimer();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('jwt_token');
     await prefs.remove('user_data');
@@ -222,6 +258,7 @@ class AuthProvider extends ChangeNotifier {
 
         _isLoading = false;
         _errorMessage = null;
+        _startDeviceCheckTimer();
         notifyListeners();
         return true;
       } catch (e) {
@@ -290,16 +327,32 @@ class AuthProvider extends ChangeNotifier {
     return prefs.getString('profile_image_${_currentUser!.id}');
   }
 
-  Future<void> fetchProfile() async {
+  Future<void> fetchProfile({bool silent = false}) async {
     if (_currentUser == null || isAdmin) return;
-    _isLoading = true;
-    notifyListeners();
+    if (!silent) {
+      _isLoading = true;
+      notifyListeners();
+    }
     try {
       final response = await _apiService.getProfile();
       final userData = response['user'];
       final empData = response['employee'];
 
       if (userData != null) {
+        final registeredDeviceId = userData['registered_device_id']?.toString();
+        final deviceDetails = await DeviceInfoService.getDeviceDetails();
+        final currentDeviceId = deviceDetails.deviceId;
+        final bypassRestriction = userData['bypass_device_restriction'] == 1 || userData['bypass_device_restriction'] == '1';
+
+        // If Admin cleared registered_device_id OR device ID doesn't match current phone:
+        if ((registeredDeviceId == null || registeredDeviceId != currentDeviceId) && !bypassRestriction) {
+          debugPrint('🚨 Device unbound by Admin! Logging out with notification...');
+          _stopDeviceCheckTimer();
+          _errorMessage = "Administrator reset your device";
+          await _clearSession();
+          return;
+        }
+
         final Map<String, dynamic> merged = Map<String, dynamic>.from(userData as Map<String, dynamic>);
         if (empData != null) {
           final empMap = empData as Map<String, dynamic>;
@@ -326,8 +379,10 @@ class AuthProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('❌ Error fetching profile from backend: $e');
     } finally {
-      _isLoading = false;
-      notifyListeners();
+      if (!silent) {
+        _isLoading = false;
+        notifyListeners();
+      }
     }
   }
 
